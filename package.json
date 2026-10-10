@@ -1,0 +1,31 @@
+{
+  "name": "etf-picker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "한국 상장 ETF를 분류·비교하고, 과거 데이터 기반 정량 점수로 후보를 추천하는 앱",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "sync": "tsx src/sync/cli.ts sync",
+    "backtest": "tsx src/sync/cli.ts backtest",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.7.5",
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.2",
+    "tsx": "4.19.1",
+    "typescript": "5.6.3",
+    "vite": "5.4.9",
+    "vitest": "2.1.3"
+  }
+}
