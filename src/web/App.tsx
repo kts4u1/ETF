@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtDate } from "../core/format";
+import { fmtAsOf } from "../core/format";
 import { DataProvider, useApp } from "./data";
 import { Combo } from "./pages/Combo";
 import { Compare } from "./pages/Compare";
@@ -67,7 +67,7 @@ function Shell() {
       </header>
       <main className="wrap" id="main">{page}</main>
       <footer className="wrap footer">
-        <p>데이터: {snap.source} · 시세 기준일 {fmtDate(snap.asOf)} · 수집 {snap.generatedAt.slice(0, 16).replace("T", " ")} UTC</p>
+        <p>데이터: {snap.source} · {fmtAsOf(snap)} · 수집 {snap.generatedAt.slice(0, 16).replace("T", " ")} UTC</p>
         <p>투자 판단의 책임은 투자자 본인에게 있습니다. 이 앱은 정보 제공용이며 투자자문이 아닙니다.</p>
       </footer>
     </>

@@ -1,14 +1,16 @@
 import { ASSET_CLASS_LABEL } from "../../core/explain";
+import { MARKET_LABEL } from "../../core/market";
+import { MARKET_FILTER_LABEL, describeCounts, summarizeExclusions } from "../../core/market-view";
 import { EXCLUSION_LABEL, HORIZONS, PROFILES, diversify } from "../../core/scoring";
-import type { AssetClass, ExclusionCode } from "../../core/types";
-import { Disclaimer } from "../components/bits";
+import type { AssetClass } from "../../core/types";
+import { Disclaimer, MarketBadge } from "../components/bits";
 import { Controls } from "../components/Controls";
 import { EtfCard } from "../components/EtfCard";
 import { useApp } from "../data";
 import { etfHref, href } from "../router";
 
 export function Home() {
-  const { prefs, rec, snap } = useApp();
+  const { prefs, rec, counts } = useApp();
   const top = diversify(rec.ranked, 10, 2);
 
   // 자산군별 대표: 전체 순위에서 자산군마다 가장 높은 1개
@@ -20,22 +22,24 @@ export function Home() {
     return true;
   });
 
-  const byReason = new Map<ExclusionCode, typeof rec.excluded>();
-  for (const x of rec.excluded) {
-    const arr = byReason.get(x.code);
-    if (arr) arr.push(x);
-    else byReason.set(x.code, [x]);
-  }
-  const reasonRows = [...byReason.entries()].sort((a, b) => b[1].length - a[1].length);
+  // 선택하지 않은 시장의 ETF는 '나빠서 제외'된 것이 아니므로 목록에 펼치지 않고 개수만 따로 밝힌다
+  const { rows: reasonRows, judged, outOfScope } = summarizeExclusions(rec.excluded);
+  const noneInMarket = prefs.market !== "all" && counts[prefs.market] === 0;
 
   return (
     <>
       <section className="hero">
         <h1>내게 맞는 ETF 후보 찾기</h1>
         <p>
-          국내 상장 ETF {snap.etfs.length.toLocaleString("ko-KR")}개를 투자 성향과 기간에 맞춰 <b>과거 성과·위험·비용·거래량</b>으로 점수화합니다.
+          {describeCounts(counts)}를 투자 성향과 기간에 맞춰 <b>과거 성과·위험·비용·거래량</b>으로 점수화합니다.
           같은 지수를 따르는 ETF는 하나로 묶고, 위험한 구조(레버리지 등)는 기본으로 걸러냅니다.
         </p>
+        {counts.US > 0 && (
+          <p className="hint">
+            해외(미국) 상장 ETF는 원화로 환산한 가격에 같은 점수식을 적용합니다. 다만 과거 검증(백테스트)은 국내 상장 ETF만으로 했습니다.{" "}
+            <a href={href("/method")}>자세히</a>
+          </p>
+        )}
       </section>
 
       <Controls />
@@ -43,10 +47,16 @@ export function Home() {
       <section aria-labelledby="top-h">
         <div className="section-head">
           <h2 id="top-h">{PROFILES[prefs.profile].label} · {HORIZONS[prefs.horizon].label} 상위 후보</h2>
-          <span className="muted">후보 {rec.universeSize.toLocaleString("ko-KR")}개 중 · 자산군/테마당 최대 2개</span>
+          <span className="muted">
+            {prefs.market === "all" ? "" : `${MARKET_LABEL[prefs.market]} · `}후보 {rec.universeSize.toLocaleString("ko-KR")}개 중 · 자산군/테마당 최대 2개
+          </span>
         </div>
         {top.length === 0 ? (
-          <div className="card empty">조건에 맞는 ETF가 없습니다. 고급 옵션에서 조건을 완화해 보세요.</div>
+          <div className="card empty">
+            {noneInMarket
+              ? <>이 데이터에는 {MARKET_LABEL[prefs.market as "KR" | "US"]} ETF가 없습니다. 상장 시장을 ‘{MARKET_FILTER_LABEL.all}’로 바꿔 보세요.</>
+              : <>조건에 맞는 ETF가 없습니다. 고급 옵션에서 조건을 완화해 보세요.</>}
+          </div>
         ) : (
           <div className="cards">
             {top.map((s, i) => <EtfCard key={s.etf.code} s={s} rank={i + 1} />)}
@@ -68,7 +78,7 @@ export function Home() {
                 {perClass.map((s) => (
                   <tr key={s.etf.code}>
                     <td>{ASSET_CLASS_LABEL[s.etf.tax.assetClass]}</td>
-                    <td><a href={etfHref(s.etf.code)}>{s.etf.name}</a> <span className="muted">{s.etf.code}</span></td>
+                    <td><MarketBadge etf={s.etf} /> <a href={etfHref(s.etf.code)}>{s.etf.name}</a> <span className="muted">{s.etf.code}</span></td>
                     <td className="num">{Math.round(s.score)}</td>
                   </tr>
                 ))}
@@ -80,7 +90,7 @@ export function Home() {
 
       <section aria-labelledby="ex-h">
         <details className="card excluded">
-          <summary id="ex-h">추천에서 제외된 ETF {rec.excluded.length.toLocaleString("ko-KR")}개 — 왜 제외됐나요?</summary>
+          <summary id="ex-h">추천에서 제외된 ETF {judged.toLocaleString("ko-KR")}개 — 왜 제외됐나요?</summary>
           <p className="hint">점수가 높아도 거래가 거의 없거나 규모가 너무 작거나 구조가 위험한 상품은 후보에서 먼저 걸러냅니다.</p>
           <ul className="reason-list">
             {reasonRows.map(([code, items]) => (
@@ -97,6 +107,11 @@ export function Home() {
               </li>
             ))}
           </ul>
+          {outOfScope > 0 && (
+            <p className="hint">
+              상장 시장을 ‘{MARKET_FILTER_LABEL[prefs.market]}’로 골라 심사 대상에서 뺀 {prefs.market === "KR" ? MARKET_LABEL.US : MARKET_LABEL.KR} ETF {outOfScope.toLocaleString("ko-KR")}개는 위 개수에 넣지 않았습니다.
+            </p>
+          )}
         </details>
       </section>
     </>

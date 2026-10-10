@@ -1,3 +1,6 @@
+import { isOverseas } from "./market";
+import type { EtfRecord, Snapshot } from "./types";
+
 /** 화면·설명 문장에서 공통으로 쓰는 숫자 포맷터. 비율(소수)을 받는 것과 % 단위를 받는 것을 이름으로 구분한다. */
 
 export const fmtRatio = (v: number | null, digits = 1, sign = false): string => {
@@ -78,3 +81,60 @@ export const fmtYears = (years: number): string => {
   if (years < 1) return `${Math.max(1, Math.round(years * 12))}개월`;
   return `${years.toFixed(1)}년`;
 };
+
+// ───────── 해외(미국) 상장: 달러 가격·환율·기준일 ─────────
+
+/** 달러 금액: 543.2 → "$543.20", 1234.5 → "$1,234.50" */
+export const fmtUsd = (v: number | null): string => {
+  if (v === null || !Number.isFinite(v)) return "-";
+  return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+/**
+ * 주당 가격처럼 크지 않은 원화 금액을 짧게: 7,600 → "7,600원", 76,000 → "7.6만원", 760,480 → "76만원".
+ * 환산값(≈)을 보조로 보여줄 때 쓴다. 정확한 값이 필요한 곳에는 쓰지 않는다.
+ */
+export const fmtWonShort = (won: number | null): string => {
+  if (won === null || !Number.isFinite(won)) return "-";
+  if (won >= 1e8) return `${(won / 1e8).toFixed(1).replace(/\.0$/, "")}억원`;
+  if (won >= 1e4) {
+    const man = won / 1e4;
+    return `${man < 100 ? man.toFixed(1).replace(/\.0$/, "") : Math.round(man).toLocaleString("ko-KR")}만원`;
+  }
+  return `${Math.round(won).toLocaleString("ko-KR")}원`;
+};
+
+/**
+ * ETF 가격 표기. 국내는 "9,800원", 해외(미국)는 달러 가격을 크게, 원화 환산값을 보조로 둔다
+ * ("$543.20" + "≈ 76만원"). 현지 가격이 없는 해외 레코드는 원화 가격만 보여준다.
+ */
+export function priceParts(e: Pick<EtfRecord, "market" | "price" | "priceNative">): { main: string; sub: string | null } {
+  if (isOverseas(e) && e.priceNative != null && Number.isFinite(e.priceNative)) {
+    return { main: fmtUsd(e.priceNative), sub: `≈ ${fmtWonShort(e.price)}` };
+  }
+  return { main: `${Math.round(e.price).toLocaleString("ko-KR")}원`, sub: null };
+}
+
+/** "$543.20 (≈ 76만원)" / "9,800원" */
+export function fmtPriceLine(e: Pick<EtfRecord, "market" | "price" | "priceNative">): string {
+  const { main, sub } = priceParts(e);
+  return sub ? `${main} (${sub})` : main;
+}
+
+/** 원/달러 환율: 1380.5 → "1,380.50원" */
+export const fmtFxRate = (rate: number): string =>
+  `${rate.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}원`;
+
+/**
+ * 시세 기준일 문구. 해외(미국) ETF가 없으면 예전 그대로 "시세 기준일 …" 한 개만,
+ * 있으면 국내·해외 기준일을 따로 적고(거래일·시차 때문에 다를 수 있다) 환산에 쓴 최신 환율을 덧붙인다.
+ */
+export function fmtAsOf(s: Pick<Snapshot, "asOf" | "asOfUs" | "fxUsdKrw">): string {
+  if (!s.asOfUs) return `시세 기준일 ${fmtDate(s.asOf)}`;
+  const parts = [
+    `국내 시세 기준일 ${fmtDate(s.asOf)}`,
+    `해외(미국) 시세 기준일 ${fmtDate(s.asOfUs)}${s.asOfUs !== s.asOf ? "(국내와 다름)" : ""}`,
+  ];
+  if (s.fxUsdKrw) parts.push(`원/달러 환율 ${fmtFxRate(s.fxUsdKrw.rate)}(${fmtDate(s.fxUsdKrw.date)})`);
+  return parts.join(" · ");
+}

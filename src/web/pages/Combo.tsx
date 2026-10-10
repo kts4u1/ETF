@@ -3,8 +3,10 @@ import { explainProposal, ASSET_CLASS_LABEL } from "../../core/explain";
 import { fmtRatio } from "../../core/format";
 import { exposureOf } from "../../core/overlap";
 import { proposeCombos, roleOf, selectPool, weeklyReturns, type ComboCandidate, type Proposal } from "../../core/portfolio";
+import { isOverseas } from "../../core/market";
+import { FX_NOTE } from "../../core/market-view";
 import { HORIZONS, PROFILES } from "../../core/scoring";
-import { Disclaimer } from "../components/bits";
+import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { Controls } from "../components/Controls";
 import { LineChart } from "../components/LineChart";
 import { useApp, useBacktest, useHoldings, useSeries, type ComboCell } from "../data";
@@ -15,7 +17,7 @@ const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
 const LETTER = ["A", "B", "C"];
 
 export function Combo() {
-  const { prefs, rec } = useApp();
+  const { prefs, rec, counts } = useApp();
   const { data: series } = useSeries();
   const { data: holdings } = useHoldings();
   const [size, setSize] = useState<2 | 3>(3);
@@ -69,6 +71,7 @@ export function Combo() {
           <b>이 제안을 어떻게 읽어야 하나요</b>
           <ul className="plain">
             <ValidationLines size={size} />
+            {counts.US > 0 && <li>위 과거 검증은 국내 상장 ETF 조합으로만 했습니다. 해외(미국) 상장 ETF가 들어간 조합은 같은 방식으로 검증하지 않았고, 구성종목 겹침도 계산하지 못합니다.</li>}
             <li>비중은 수익을 예측해서 정한 것이 아니라 변동성이 작은 ETF에 조금 더 싣는 단순한 규칙(역변동성, 15~60%)입니다. 선물 기반·통화 ETF는 자동 제안에서 제외합니다.</li>
             <li>전체 검증 결과는 <a href={href("/method")}>방법론</a>에서 볼 수 있습니다.</li>
           </ul>
@@ -151,7 +154,7 @@ function ProposalCard({ p, index }: { p: Proposal; index: number }) {
           <li key={m.cand.etf.code}>
             <span className="legend-key" style={{ background: COLORS[k] }} aria-hidden />
             <div className="member-body">
-              <a href={etfHref(m.cand.etf.code)}><b>{m.cand.etf.name}</b></a>
+              <span><MarketBadge etf={m.cand.etf} /> <a href={etfHref(m.cand.etf.code)}><b>{m.cand.etf.name}</b></a></span>
               <span className="muted">{Math.round(m.weight * 100)}% · {roleOf(m.cand.etf)} · {ASSET_CLASS_LABEL[m.cand.etf.tax.assetClass]}{m.cand.etf.tax.theme ? ` · ${m.cand.etf.tax.theme}` : ""} · 추천 점수 {Math.round(m.cand.score)}</span>
             </div>
           </li>
@@ -167,6 +170,7 @@ function ProposalCard({ p, index }: { p: Proposal; index: number }) {
       </dl>
 
       <ul className="reasons">{ex.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+      {p.members.some((m) => isOverseas(m.cand.etf)) && <FxNote>{FX_NOTE} — 해외(미국) 상장 ETF가 포함되어 위 변동성·낙폭·차트에 환율 변동이 들어 있습니다.</FxNote>}
 
       {chart ? (
         <LineChart dates={chart.dates} series={chart.series} yFormat={(v) => v.toFixed(0)} ariaLabel={`조합 ${LETTER[index]}와 구성 ETF의 최근 ${Math.round(weeks / 52 * 10) / 10}년 비교 차트(시작=100)`} height={240} />

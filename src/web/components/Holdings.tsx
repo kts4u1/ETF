@@ -9,6 +9,7 @@ import {
   type Exposure,
   type HoldingsFile,
 } from "../../core/overlap";
+import { isOverseas } from "../../core/market";
 import type { EtfRecord } from "../../core/types";
 import { useApp, useHoldings } from "../data";
 import { compareHref, etfHref } from "../router";
@@ -21,6 +22,9 @@ const UNAVAILABLE_TEXT: Record<string, string> = {
 };
 
 const pct = (v: number, d = 1) => `${v.toFixed(d)}%`;
+
+/** 구성종목을 계산하지 못한 사유. 해외 상장은 파일에 사유가 없어도 '해외 상장이라서'가 정확한 설명이다. */
+const unavailableKey = (e: Pick<EtfRecord, "market">, reason: string | undefined): string => (isOverseas(e) ? "overseas-listed" : reason ?? "no-data");
 
 /** 상세 화면: 구성종목 상위·집중도, 그리고 구성이 비슷한 ETF */
 export function HoldingsSection({ etf }: { etf: EtfRecord }) {
@@ -46,7 +50,7 @@ export function HoldingsSection({ etf }: { etf: EtfRecord }) {
     return (
       <section className="card" aria-labelledby="hold-h">
         <h2 id="hold-h">구성종목</h2>
-        <p className="muted">{UNAVAILABLE_TEXT[file.unavailable[etf.code] ?? "no-data"]}</p>
+        <p className="muted">{UNAVAILABLE_TEXT[unavailableKey(etf, file.unavailable[etf.code])]}</p>
       </section>
     );
   }
@@ -165,7 +169,8 @@ export function OverlapPanel({ codes }: { codes: string[] }) {
                   if (!Number.isFinite(v)) {
                     // 행 ETF 또는 열 ETF 중 계산 불가인 쪽의 사유를 툴팁으로
                     const culprit = data.exps[i] ? b : a;
-                    return <td key={b} className="num muted" title={UNAVAILABLE_TEXT[file.unavailable[culprit] ?? "no-data"]}>계산 불가</td>;
+                    const culpritEtf = byCode.get(culprit);
+                    return <td key={b} className="num muted" title={UNAVAILABLE_TEXT[culpritEtf ? unavailableKey(culpritEtf, file.unavailable[culprit]) : file.unavailable[culprit] ?? "no-data"]}>계산 불가</td>;
                   }
                   return (
                     <td key={b} className={`num${i === j ? " diag" : ""}`} style={i === j ? undefined : { background: `color-mix(in srgb, var(--seq-fill) ${Math.min(60, v * 0.6)}%, transparent)` }}>

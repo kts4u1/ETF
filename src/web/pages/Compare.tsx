@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { typeLine } from "../../core/explain";
 import { fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
+import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
+import { FX_NOTE, listingLine, matchRank } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
-import { Disclaimer } from "../components/bits";
+import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { OverlapPanel } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
 import { useApp, useSeries } from "../data";
@@ -23,7 +25,8 @@ const ROWS: Row[] = [
   { label: "연 변동성", get: (e) => volOf(e), fmt: (e) => fmtRatio(volOf(e), 0), better: "low" },
   { label: "최대낙폭", get: (e) => { const d = mddOf(e); return d === null ? null : -d; }, fmt: (e) => fmtRatio(mddOf(e), 0), better: "low" },
   { label: "샤프지수", get: (e) => e.m.sharpe3y ?? e.m.sharpe1y, fmt: (e) => (e.m.sharpe3y ?? e.m.sharpe1y)?.toFixed(2) ?? "-", better: "high" },
-  { label: "괴리율", get: (e) => (e.navGap === null ? null : Math.abs(e.navGap)), fmt: (e) => fmtPercentUnit(e.navGap, 2, true), better: "low" },
+  // 해외 상장은 괴리율 데이터가 없다("-"). 없는 값으로 '우위'를 가리지 않는다.
+  { label: "괴리율", get: (e) => (isOverseas(e) || e.navGap === null ? null : Math.abs(e.navGap)), fmt: (e) => (isOverseas(e) ? "-" : fmtPercentUnit(e.navGap, 2, true)), better: "low" },
 ];
 
 export function Compare({ codes }: { codes: string[] }) {
@@ -39,10 +42,18 @@ export function Compare({ codes }: { codes: string[] }) {
   );
 
   const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [];
-    return snap.etfs.filter((e) => !codes.includes(e.code) && (e.name.toLowerCase().includes(s) || e.code.includes(s))).slice(0, 8);
+    if (!q.trim()) return [];
+    // 티커·코드가 정확히 맞는 것을 먼저(예: SPY 를 입력하면 이름에 spy 가 들어간 다른 ETF보다 위에)
+    return snap.etfs
+      .filter((e) => !codes.includes(e.code))
+      .map((e) => ({ e, rank: matchRank(e, q) }))
+      .filter((x) => x.rank > 0)
+      .sort((a, b) => b.rank - a.rank)
+      .slice(0, 8)
+      .map((x) => x.e);
   }, [q, snap, codes]);
+  const hasOverseas = picked.some(isOverseas);
+  const hasMixed = hasOverseas && picked.some((p) => !isOverseas(p));
 
   /**
    * 행마다 가장 유리한 ETF를 표시한다. 단, 화면에 보이는 값이 모두 같으면(예: 변동성 15% / 15% / 15%)
@@ -69,6 +80,7 @@ export function Compare({ codes }: { codes: string[] }) {
           {picked.map((p, i) => (
             <span key={p.code} className="pick">
               <span className="legend-key" style={{ background: COLORS[i] }} aria-hidden />
+              <MarketBadge etf={p} />
               <a href={etfHref(p.code)}>{p.name}</a>
               <a className="x" aria-label={`${p.name} 제거`} href={compareHref(picked.filter((x) => x.code !== p.code).map((x) => x.code))}>×</a>
             </span>
@@ -77,12 +89,12 @@ export function Compare({ codes }: { codes: string[] }) {
         </div>
         {picked.length < MAX && (
           <div className="add">
-            <input type="search" placeholder="이름 또는 코드로 검색해 추가" value={q} onChange={(e) => setQ(e.target.value)} aria-label="비교할 ETF 검색" />
+            <input type="search" placeholder="이름·코드·티커로 검색해 추가 (예: 반도체, 069500, SPY)" value={q} onChange={(e) => setQ(e.target.value)} aria-label="비교할 ETF 검색" />
             {results.length > 0 && (
               <ul className="suggest">
                 {results.map((r) => (
                   <li key={r.code}>
-                    <a href={compareHref([...picked.map((p) => p.code), r.code])} onClick={() => setQ("")}>{r.name} <span className="muted">{r.code} · {typeLine(r)}</span></a>
+                    <a href={compareHref([...picked.map((p) => p.code), r.code])} onClick={() => setQ("")}><MarketBadge etf={r} /> {r.name} <span className="muted">{r.code} · {typeLine(r)}</span></a>
                   </li>
                 ))}
               </ul>
@@ -114,6 +126,11 @@ export function Compare({ codes }: { codes: string[] }) {
                   ariaLabel={`${picked.map((p) => p.name).join(", ")} 비교 차트`}
                 />
                 <p className="hint">공통 시작일 {idx.startDate.slice(0, 4)}-{idx.startDate.slice(4, 6)}-{idx.startDate.slice(6, 8)} 기준. 상장일이 늦은 ETF가 있으면 그 시점부터 비교합니다.</p>
+                {hasOverseas && (
+                  <FxNote>
+                    {FX_NOTE}. 해외(미국) 상장 ETF의 선은 환율 변동이 포함된 원화 기준입니다.{hasMixed ? " 국내 상장 ETF와 같은 원화 기준으로 겹쳐 보이지만, 세금·환전·거래시간은 다릅니다." : ""}
+                  </FxNote>
+                )}
               </>
             ) : <div className="chart-loading">차트 불러오는 중…</div>}
           </section>
@@ -126,6 +143,16 @@ export function Compare({ codes }: { codes: string[] }) {
               <table className="table compare-table">
                 <thead><tr><th />{picked.map((p) => <th key={p.code} className="num"><a href={etfHref(p.code)}>{p.name}</a></th>)}</tr></thead>
                 <tbody>
+                  <tr>
+                    <th scope="row">상장 시장</th>
+                    {picked.map((p) => <td key={p.code} className="num"><MarketBadge etf={p} /> {MARKET_LABEL[marketOf(p)]}</td>)}
+                  </tr>
+                  {hasOverseas && (
+                    <tr>
+                      <th scope="row">거래소 · 카테고리 <small className="muted">(참고)</small></th>
+                      {picked.map((p) => <td key={p.code} className="num wrap-cell">{listingLine(p) ?? "-"}</td>)}
+                    </tr>
+                  )}
                   {ROWS.map((r) => {
                     const best = bestCodes(r);
                     return (
@@ -142,6 +169,7 @@ export function Compare({ codes }: { codes: string[] }) {
               </table>
             </div>
             <p className="hint">‘우위’는 해당 행에서 화면에 보이는 값이 가장 유리한 ETF입니다(값이 모두 같으면 표시하지 않음). 행마다 기준이 다르므로 종합 판단은 직접 하세요.</p>
+            {hasOverseas && <FxNote>해외(미국) 상장 ETF의 순자산·거래대금·수익률·변동성·최대낙폭은 {FX_NOTE.replace("원화 환산: ", "")} 기준의 원화 환산값이고, 괴리율은 해외 상장에는 제공하지 않아 ‘-’로 둡니다.</FxNote>}
           </section>
         </>
       )}

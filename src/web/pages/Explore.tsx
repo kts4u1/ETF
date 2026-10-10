@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { ASSET_CLASS_LABEL, REGION_LABEL, TAG_LABEL } from "../../core/explain";
 import { fmtEok, fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
+import { isOverseas, marketOf } from "../../core/market";
+import { MARKET_FILTERS, MARKET_FILTER_LABEL, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
-import type { AssetClass, EtfRecord, Region } from "../../core/types";
-import { Delta, Disclaimer } from "../components/bits";
+import type { AssetClass, EtfRecord, MarketFilter, Region } from "../../core/types";
+import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { useApp } from "../data";
 import { compareHref, etfHref } from "../router";
 
@@ -25,8 +27,9 @@ const COLS: { key: SortKey; label: string; num: boolean; desc: boolean; hint?: s
 const PAGE = 50;
 
 export function Explore() {
-  const { snap, scoreOf } = useApp();
+  const { snap, scoreOf, counts } = useApp();
   const [q, setQ] = useState("");
+  const [mkt, setMkt] = useState<MarketFilter>("all");
   const [cls, setCls] = useState<AssetClass | "">("");
   const [region, setRegion] = useState<Region | "">("");
   const [tag, setTag] = useState("");
@@ -51,9 +54,10 @@ export function Explore() {
   };
 
   const rows = useMemo(() => {
-    const s = q.trim().toLowerCase();
     const filtered = snap.etfs.filter((e) => {
-      if (s && !(e.name.toLowerCase().includes(s) || e.code.toLowerCase().includes(s) || (e.tax.theme ?? "").toLowerCase().includes(s))) return false;
+      // 검색: 코드(국내 6자리·해외 티커)·이름(국내 한글·해외 영문)·테마(한글), 대소문자·공백 무시
+      if (!matchesQuery(e, q)) return false;
+      if (mkt !== "all" && marketOf(e) !== mkt) return false;
       if (cls && e.tax.assetClass !== cls) return false;
       if (region && e.tax.region !== region) return false;
       if (tag && !e.tax.tags.includes(tag as never)) return false;
@@ -71,7 +75,8 @@ export function Explore() {
       const c = typeof va === "string" ? va.localeCompare(vb as string, "ko") : (va as number) - (vb as number);
       return c * dir;
     });
-  }, [snap, q, cls, region, tag, onlyCand, sort, scoreOf]);
+  }, [snap, q, mkt, cls, region, tag, onlyCand, sort, scoreOf]);
+  const hasOverseas = useMemo(() => rows.some(isOverseas), [rows]);
 
   const toggleSort = (key: SortKey, desc: boolean) => {
     setShown(PAGE);
@@ -85,11 +90,16 @@ export function Explore() {
   return (
     <>
       <h1>ETF 탐색</h1>
-      <p className="lead">전체 {snap.etfs.length.toLocaleString("ko-KR")}개 ETF를 검색·필터·정렬합니다. 점수는 홈에서 정한 투자 성향·기간 기준입니다.</p>
+      <p className="lead">{describeCounts(counts)}를 검색·필터·정렬합니다. 점수는 홈에서 정한 투자 성향·기간·상장 시장 기준입니다.</p>
 
       <section className="card filters" aria-label="필터">
-        <input type="search" placeholder="이름·코드·테마 검색 (예: 반도체, 미국S&P500, 069500)" value={q} onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} aria-label="ETF 검색" />
+        <input type="search" placeholder="이름·코드·티커·테마 검색 (예: 반도체, 미국S&P500, 069500, SPY)" value={q} onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} aria-label="ETF 검색" />
         <div className="filter-row">
+          <label className="select"><span>상장 시장</span>
+            <select value={mkt} onChange={(e) => { setMkt(e.target.value as MarketFilter); setShown(PAGE); }}>
+              {MARKET_FILTERS.map((k) => <option key={k} value={k}>{MARKET_FILTER_LABEL[k]}</option>)}
+            </select>
+          </label>
           <label className="select"><span>자산군</span>
             <select value={cls} onChange={(e) => { setCls(e.target.value as AssetClass | ""); setShown(PAGE); }}>
               <option value="">전체</option>
@@ -117,6 +127,8 @@ export function Explore() {
         {sel.length >= 2 ? <a className="btn" href={compareHref(sel)}>선택한 {sel.length}개 비교</a> : <span className="muted">비교하려면 2~4개를 체크하세요</span>}
       </div>
 
+      {hasOverseas && <FxNote>해외(미국) 상장 ETF의 가격·순자산·거래대금·수익률은 원화 환산 값입니다(달러 가격 × 같은 날 원/달러 환율). 모닝스타 카테고리는 참고용 영문 분류입니다.</FxNote>}
+
       <div className="table-wrap">
         <table className="table explore">
           <thead>
@@ -139,7 +151,7 @@ export function Explore() {
                   <td><input type="checkbox" checked={sel.includes(e.code)} disabled={!sel.includes(e.code) && sel.length >= 4} onChange={() => toggleSel(e.code)} aria-label={`${e.name} 비교에 추가`} /></td>
                   <td className="name-cell">
                     <a href={etfHref(e.code)}>{e.name}</a>
-                    <span className="muted">{e.code} · {ASSET_CLASS_LABEL[e.tax.assetClass]}{e.tax.theme ? ` · ${e.tax.theme}` : ""}{e.tax.tags.length ? ` · ${e.tax.tags.map((t) => TAG_LABEL[t]).join("·")}` : ""}</span>
+                    <span className="muted"><MarketBadge etf={e} /> {e.code}{isOverseas(e) && listingLine(e) ? ` · ${listingLine(e)}` : ""} · {ASSET_CLASS_LABEL[e.tax.assetClass]}{e.tax.theme ? ` · ${e.tax.theme}` : ""}{e.tax.tags.length ? ` · ${e.tax.tags.map((t) => TAG_LABEL[t]).join("·")}` : ""}</span>
                   </td>
                   <td className="num">{sc ? Math.round(sc.score) : <span className="muted">-</span>}</td>
                   <td className="num"><Delta v={e.m.ret.y1} /></td>

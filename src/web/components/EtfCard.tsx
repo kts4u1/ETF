@@ -1,11 +1,13 @@
 import { cautions, explain, typeLine } from "../../core/explain";
 import { fmtEok, fmtFee, fmtRatio } from "../../core/format";
+import { isOverseas } from "../../core/market";
+import { FX_NOTE, listingLine } from "../../core/market-view";
 import { mddOf } from "../../core/scoring";
 import type { Scored } from "../../core/types";
 import { useApp, useSeries } from "../data";
 import { compareHref, etfHref } from "../router";
 import { sliceSeries } from "../series-utils";
-import { CautionList, Delta, FactorBars, RiskPips, TagChips } from "./bits";
+import { CautionList, Delta, FactorBars, FxNote, RiskPips, TagChips } from "./bits";
 import { Sparkline } from "./Sparkline";
 
 export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
@@ -15,6 +17,8 @@ export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
   const ex = explain(s, prefs);
   const warn = cautions(e).filter((c) => c.level !== "info").slice(0, 2);
   const spark = series ? sliceSeries(series, e.code, 156) : null;
+  const overseas = isOverseas(e);
+  const listing = listingLine(e);
   const alts = s.alternatives.map((c) => byCode.get(c)).filter(Boolean);
 
   return (
@@ -24,6 +28,7 @@ export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
         <div className="etf-title">
           <h3><a href={etfHref(e.code)}>{e.name}</a></h3>
           <p className="sub">{e.code} · {e.issuer ?? "운용사 미상"} · {typeLine(e)}</p>
+          {listing && <p className="sub">{listing}</p>}
         </div>
         <div className="score" title={ex.headline}>
           <b>{Math.round(s.score)}</b><small>/100</small>
@@ -48,8 +53,9 @@ export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
         <div><dt>최대낙폭</dt><dd>{fmtRatio(mddOf(e), 0)}</dd></div>
         <div><dt>총보수</dt><dd>{fmtFee(e.fee)}</dd></div>
         <div><dt>순자산</dt><dd>{fmtEok(e.aumEok)}</dd></div>
-        <div className="spark-cell"><dt>3년 추이</dt><dd>{spark ? <Sparkline values={spark.values} label={`${e.name} 최근 3년 가격 추이`} /> : <span className="muted">-</span>}</dd></div>
+        <div className="spark-cell"><dt>3년 추이</dt><dd>{spark ? <Sparkline values={spark.values} label={`${e.name} 최근 3년 가격 추이${overseas ? "(원화 환산)" : ""}`} /> : <span className="muted">-</span>}</dd></div>
       </dl>
+      {overseas && <FxNote>{FX_NOTE} — 위 수익률·순자산·추이는 모두 이 환산값 기준입니다.</FxNote>}
 
       <footer className="etf-foot">
         <details>

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
+import { countByMarket, mergeSavedPrefs, type MarketCounts } from "../core/market-view";
 import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
 import { readJson, writeJson } from "./storage";
@@ -48,6 +49,8 @@ export interface BacktestCell {
 
 interface AppData {
   snap: Snapshot;
+  /** 스냅샷의 시장별 ETF 수(화면 문구에 개수를 박아 두지 않기 위해 여기서 센다) */
+  counts: MarketCounts;
   byCode: Map<string, EtfRecord>;
   prefs: Preferences;
   setPrefs: (patch: Partial<Preferences>) => void;
@@ -64,9 +67,9 @@ const Ctx = createContext<AppData | null>(null);
 // 앱 이름이 바뀌어도 저장된 설정(및 App.tsx 의 테마 키)이 사라지지 않도록 예전 접두사를 유지한다.
 const PREFS_KEY = "etf-picker:prefs:v1";
 
+/** 저장된 설정 복원. 시장 필터가 생기기 전에 저장된 설정에는 market 이 없으므로 기본값(전체)으로 채운다. */
 function loadPrefs(): Preferences {
-  const saved = readJson<Partial<Preferences>>(PREFS_KEY);
-  return { ...DEFAULT_PREFS, ...(saved ?? {}) };
+  return mergeSavedPrefs(readJson<unknown>(PREFS_KEY));
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -101,11 +104,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const derived = useMemo(() => {
     if (!snap) return null;
     const byCode = new Map(snap.etfs.map((e) => [e.code, e]));
+    const counts = countByMarket(snap.etfs);
     const rec = rankEtfs(snap.etfs, prefs);
     const all = prefs.dedupe ? rankEtfs(snap.etfs, { ...prefs, dedupe: false }) : rec;
     const scoreMap = new Map(all.ranked.map((s) => [s.etf.code, s]));
     const excludedBy = new Map(all.excluded.map((x) => [x.etf.code, x.reason]));
-    return { byCode, rec, all, scoreMap, excludedBy };
+    return { byCode, counts, rec, all, scoreMap, excludedBy };
   }, [snap, prefs]);
 
   if (error) {
@@ -123,6 +127,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const value: AppData = {
     snap,
+    counts: derived.counts,
     byCode: derived.byCode,
     prefs,
     setPrefs,

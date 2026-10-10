@@ -129,6 +129,10 @@ nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
 .card.empty { text-align: center; color: var(--text-2); padding: 32px 18px; }
 .notice { border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); margin-top: 14px; }
+/* 방법론의 핵심 한계 안내: 일반 안내보다 굵은 띠와 큰 글자로 눈에 띄게 */
+.notice.key { border-left-width: 8px; font-size: 15px; padding: 14px 16px; margin-top: 0; background: var(--surface); }
+.notice.key > b { display: block; font-size: 16px; margin-bottom: 2px; }
+.notice.key-inline { margin: 8px 0; }
 .card.notice { background: var(--surface); }
 .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: 9px; padding: 8px 14px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; min-height: 38px; }
 .btn:hover { text-decoration: none; filter: brightness(1.06); }
@@ -153,12 +157,14 @@ nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .chip-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text-3); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
 .chip-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600; }
 .advanced summary { cursor: pointer; font-weight: 600; color: var(--text-2); }
-.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 6px; }
+.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 6px; align-items: start; }
 .check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .check input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--accent); }
 .check small { display: block; color: var(--text-3); font-size: 12px; line-height: 1.4; }
 .check.inline { align-items: center; }
 .select { display: grid; gap: 4px; font-size: 13px; color: var(--text-3); font-weight: 600; }
+.select-note { display: grid; gap: 4px; align-content: start; }
+.select-note .hint { margin: 0; }
 select, input[type="search"] { font: inherit; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-height: 38px; }
 input[type="search"] { width: 100%; }
 
@@ -178,6 +184,11 @@ input[type="search"] { width: 100%; }
 .chips { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 .chip { background: var(--surface-2); color: var(--text-2); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
 .chip-danger { background: transparent; color: var(--high); border: 1px solid var(--high); }
+/* 상장 시장 배지: 색이 아니라 "국내"/"미국" 글자가 구분의 기준이다. 해외는 테두리를 강조색으로 한 번 더 구분한다. */
+.mkt { display: inline-block; border-radius: 6px; padding: 1px 7px; font-size: 12px; font-weight: 700; line-height: 1.5; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); white-space: nowrap; vertical-align: baseline; }
+.mkt-us { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.fx-note { margin: 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 8px 8px 0; font-size: 12.5px; color: var(--text-2); }
+.card > .fx-note, .kv + .hint + .fx-note { margin-top: 8px; }
 .risk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-weight: 600; }
 .pips { display: inline-flex; gap: 2px; }
 .pips i { width: 8px; height: 12px; border-radius: 2px; background: var(--seq-track); }
@@ -218,7 +229,8 @@ input[type="search"] { width: 100%; }
 .caution-info .caution-badge { color: var(--text-3); }
 
 /* ───────── 테이블 ───────── */
-.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+/* position: relative — 표 안의 .sr-only(절대 위치) 글자가 스크롤 영역 밖으로 빠져나와 페이지 가로 스크롤을 만들지 않게 한다 */
+.table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .card > .table-wrap { border: 0; border-radius: 0; background: transparent; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th, .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
@@ -232,6 +244,10 @@ input[type="search"] { width: 100%; }
 .name-cell { min-width: 220px; }
 .name-cell a { font-weight: 700; display: block; }
 .name-cell .muted { font-size: 12px; }
+/* 이름 칸이 숫자 칸에 밀려 글자 단위로 줄바꿈되지 않도록 최소 폭을 둔다(영문 ETF 이름이 길다) */
+.table td.cell-name { min-width: 190px; }
+.name-cell .mkt { font-size: 11px; padding: 0 6px; margin-right: 2px; }
+.table .num.wrap-cell { white-space: normal; min-width: 120px; font-size: 12.5px; }
 .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 800; }
 .more { text-align: center; }
 .filters { display: grid; gap: 10px; }
@@ -243,6 +259,7 @@ input[type="search"] { width: 100%; }
 .price-box { display: grid; gap: 2px; text-align: right; font-size: 13px; }
 .price-box b { font-size: 28px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
 .price-box small { font-size: 14px; margin-left: 2px; font-weight: 600; }
+.price-box .price-krw { font-size: 14px; color: var(--text-2); letter-spacing: 0; }
 .score-card { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; align-items: center; }
 .score-big { line-height: 1; font-variant-numeric: tabular-nums; }
 .score-big b { font-size: 52px; letter-spacing: -0.04em; }
@@ -349,6 +366,9 @@ input[type="search"] { width: 100%; }
   nav { order: 3; flex: 1 0 100%; }
 }
 @media (max-width: 520px) {
+  /* 5년 수익률이 세 자리(+107.7%)여도 칸 안에서 "%" 가 떨어져 나가지 않게 */
+  .returns td { font-size: 13px; padding: 8px 1px; }
+  .returns .delta { white-space: nowrap; }
   h1 { font-size: 22px; }
   .hero h1 { font-size: 24px; }
   .card { padding: 14px; }
