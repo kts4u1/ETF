@@ -84,6 +84,16 @@ describe("classify: 테마/광범위 지수", () => {
   it("우선증권은 금융 테마가 아니다", () => {
     expect(classify("RISE 미국고정배당우선증권", 4).theme).not.toBe("금융");
   });
+  it("'필수소비재'·'내수소비'의 '수소'는 수소 테마가 아니다", () => {
+    expect(classify("KODEX 필수소비재", 1).theme).toBe("소비·미디어");
+    expect(classify("KODEX 미국S&P500필수소비재", 4).theme).toBe("소비·미디어");
+    expect(classify("KIWOOM 차이나내수소비TOP CSI", 4).theme).not.toBe("원전·에너지");
+  });
+  it("진짜 수소 테마는 그대로 원전·에너지", () => {
+    for (const name of ["RISE 수소경제테마", "HANARO Fn전기&수소차", "PLUS 글로벌수소&차세대연료전지", "수소ETF", "RISE 글로벌수소경제"]) {
+      expect(classify(name, 4).theme, name).toBe("원전·에너지");
+    }
+  });
 });
 
 describe("동일 지수 그룹 키", () => {
