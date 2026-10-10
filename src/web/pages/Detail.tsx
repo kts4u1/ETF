@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { EtfRecord } from "../../core/types";
 import { cautions, explain, structureNotes, taxNote, typeLine } from "../../core/explain";
-import { feeWonPer10M, fmtDate, fmtEok, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon, priceParts } from "../../core/format";
+import { feeWonPer10M, fmtDate, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon, priceParts } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
-import { FX_NOTE, listingLine } from "../../core/market-view";
+import { FX_NOTE, aumText, listingLine } from "../../core/market-view";
 import { mddOf, sameGroup, volOf } from "../../core/scoring";
 import { CautionList, Delta, Disclaimer, FactorBars, FxNote, MarketBadge, RiskPips, TagChips } from "../components/bits";
 import { HoldingsSection } from "../components/Holdings";
@@ -110,7 +110,7 @@ export function Detail({ code }: { code: string | null }) {
               </>
             )}
             <div><dt>총보수 (연)</dt><dd>{fmtFee(e.fee)} <small className="muted">1,000만원당 연 {e.fee === null ? "-" : feeWonPer10M(e.fee).toLocaleString("ko-KR")}원</small></dd></div>
-            <div><dt>순자산{overseas && <small className="muted"> (원화 환산)</small>}</dt><dd>{fmtEok(e.aumEok)}</dd></div>
+            <div><dt>순자산{overseas && <small className="muted"> (원화 환산)</small>}</dt><dd>{aumText(e)}{e.aumScope === "fund" && <small className="muted"> 펀드 전체 합계</small>}</dd></div>
             <div><dt>일평균 거래대금(20일){overseas && <small className="muted"> (원화 환산)</small>}</dt><dd>{fmtWon(m.avgValue20)}</dd></div>
             <div><dt>최근 12개월 분배율</dt><dd>{fmtPercentUnit(e.divYield)}</dd></div>
             <div><dt>괴리율</dt><dd>{overseas ? <>- <small className="muted">해외 상장은 제공하지 않음</small></> : fmtPercentUnit(e.navGap, 2, true)}</dd></div>
@@ -184,7 +184,7 @@ export function Detail({ code }: { code: string | null }) {
                   <tr key={g.code} className={g.code === e.code ? "current" : ""}>
                     <td className="cell-name"><MarketBadge etf={g} /> {g.code === e.code ? <b>{g.name}</b> : <a href={etfHref(g.code)}>{g.name}</a>}</td>
                     <td className="num">{fmtFee(g.fee)}{g.fee === minFee && <span className="badge">최저</span>}</td>
-                    <td className="num">{fmtEok(g.aumEok)}</td>
+                    <td className="num">{aumText(g)}</td>
                     <td className="num">{fmtWon(g.m.avgValue20)}</td>
                     <td className="num"><Delta v={g.m.ret.y1} /></td>
                     <td className="num">{navGapText(g)}</td>

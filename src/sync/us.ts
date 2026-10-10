@@ -199,6 +199,12 @@ export function avgTradedValueWon(chart: Pick<ChartData, "dates" | "close" | "vo
 export const passesLiquidity = (avgValueWon: number | null): boolean => avgValueWon !== null && avgValueWon >= US_MIN_AVG_VALUE_WON;
 
 /** 달러 순자산 × 환율 → 억원 */
+/**
+ * 야후의 순자산(totalAssets)이 ETF 클래스만이 아니라 펀드 전체 합계인 운용사. 뱅가드 ETF 는 같은 펀드의 뮤추얼펀드 클래스와
+ * 한 몸이라 VTI·VOO 등의 값이 실제 ETF 규모의 몇 배로 나온다(야후는 ETF 클래스만의 값을 주지 않아 보정할 수 없고 표시로 알린다).
+ */
+export const hasFundLevelAum = (family: string | null): boolean => family !== null && /^vanguard\b/i.test(family);
+
 export const aumEokFromUsd = (totalAssetsUsd: number, rate: number): number => (totalAssetsUsd * rate) / 1e8;
 
 export const passesAum = (aumEok: number | null): boolean => aumEok !== null && aumEok >= US_MIN_AUM_EOK;
@@ -281,6 +287,7 @@ export function buildUsRecord(input: UsRecordInput): { etf: EtfRecord; series: P
     price: Math.round(lastClose * rate),
     changeRate: round((lastClose / prevClose - 1) * 100, 2),
     aumEok: info.totalAssets === null ? 0 : Math.round(aumEokFromUsd(info.totalAssets, latest.rate)),
+    ...(hasFundLevelAum(info.family) ? { aumScope: "fund" as const } : {}),
     // 야후는 소수(0.000945)로 주지만 앱의 fee 는 % 단위다
     fee: info.expenseRatio === null ? null : round(info.expenseRatio * 100, 4),
     divYield: trailingDivYield(chart, lastClose, m.asOf),

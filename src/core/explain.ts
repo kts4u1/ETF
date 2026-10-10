@@ -1,6 +1,7 @@
 import { feeWonPer10M, fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
 import { roleOf, type Proposal } from "./portfolio";
 import { isOverseas } from "./market";
+import { AUM_FUND_NOTE, aumText } from "./market-view";
 import { HORIZONS, PROFILES, isLeveraged, volOf, mddOf } from "./scoring";
 import type { AssetClass, EtfRecord, Preferences, Region, Scored } from "./types";
 
@@ -196,6 +197,7 @@ export function cautions(e: EtfRecord): Caution[] {
       text: "달러로 거래되므로 매수할 때마다 환전이 필요하고(환전 수수료·스프레드 별도), 미국 시장은 한국 시간 밤~새벽에 열리며 휴장일도 국내와 다릅니다.",
     });
     out.push({ level: "info", text: "괴리율과 구성종목 겹침은 해외 상장 ETF에는 제공하지 않습니다(데이터 없음)." });
+    if (e.aumScope === "fund") out.push({ level: "info", text: AUM_FUND_NOTE });
   } else {
     if (!t.tags.includes("hedged") && ["global-equity", "bond", "commodity", "real-asset", "multi"].includes(t.assetClass) && t.region !== "KR" && t.region !== "NA") {
       out.push({ level: "info", text: "환헤지가 없는 상품은 원/외화 환율에 따라 수익률이 달라집니다(원화 약세엔 유리, 강세엔 불리)." });
@@ -264,7 +266,7 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
     reasons.push(`총보수 연 ${fmtFee(e.fee)}로 낮습니다(1,000만원당 연 ${feeWonPer10M(e.fee).toLocaleString("ko-KR")}원).`);
   }
   if (f.trust >= 80) {
-    reasons.push(`순자산 ${fmtEok(e.aumEok)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
+    reasons.push(`순자산 ${aumText(e)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
   }
   if (s.groupSize > 1) {
     reasons.unshift(

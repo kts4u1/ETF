@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON } from "./market";
 import {
+  AUM_FUND_NOTE,
   MARKET_FILTERS,
   MARKET_FILTER_LABEL,
+  aumText,
   countByMarket,
   describeCounts,
   isMarketFilter,
@@ -152,5 +154,17 @@ describe("검색", () => {
     expect(matchesQuery(spy, "반도체")).toBe(false);
     expect(matchesQuery(kr, "spy")).toBe(false);
     expect(matchesQuery(spy, "   ")).toBe(true);
+  });
+});
+
+describe("순자산 표기(aumText)", () => {
+  it("ETF 단독 값은 그대로, 펀드 전체 합계는 † 를 붙인다", () => {
+    expect(aumText({ aumEok: 12_000 })).toBe("1.2조");
+    expect(aumText({ aumEok: 12_000, aumScope: "fund" })).toBe("1.2조†");
+    expect(aumText({ aumEok: 3_100, aumScope: "fund" })).toBe("3,100억†");
+  });
+  it("† 설명 문구가 있다", () => {
+    expect(AUM_FUND_NOTE).toContain("†");
+    expect(AUM_FUND_NOTE).toContain("펀드 전체");
   });
 });

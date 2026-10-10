@@ -17,6 +17,7 @@ import {
   fetchNasdaqList,
   fxLatest,
   fxRateOn,
+  hasFundLevelAum,
   isEtnName,
   parseNasdaqList,
   passesAum,
@@ -313,6 +314,27 @@ describe("trimChart: 마지막 2000행만", () => {
     expect(t.dates.at(-1)).toBe(c.dates.at(-1));
     expect(t.dividends).toEqual(c.dividends);
     expect(trimChart(c, 5000)).toBe(c);
+  });
+});
+
+describe("펀드 전체 순자산(뱅가드)", () => {
+  it("뱅가드 계열만 펀드 단위 순자산으로 표시한다", () => {
+    expect(hasFundLevelAum("Vanguard")).toBe(true);
+    expect(hasFundLevelAum("vanguard group")).toBe(true);
+    expect(hasFundLevelAum("State Street Investment Management")).toBe(false);
+    expect(hasFundLevelAum("Invesco")).toBe(false);
+    expect(hasFundLevelAum(null)).toBe(false);
+  });
+  it("레코드: 뱅가드는 aumScope=fund, 그 밖에는 필드가 없다", () => {
+    const nowSec = NOW / 1000;
+    const from = nowSec - 600 * DAY;
+    const chart = usChart("VTI", from, nowSec, { px: () => 100 });
+    const fx: FxTable = { dates: weekdays(from - 40 * DAY, nowSec), rate: [] };
+    fx.rate = fx.dates.map(() => 1300);
+    const v = buildUsRecord({ symbol: "VTI", listName: "x", info: info({ totalAssets: 2e9, family: "Vanguard" }), chart, fx })!;
+    const o = buildUsRecord({ symbol: "VTI", listName: "x", info: info({ totalAssets: 2e9, family: "Invesco" }), chart, fx })!;
+    expect(v.etf.aumScope).toBe("fund");
+    expect("aumScope" in o.etf).toBe(false);
   });
 });
 

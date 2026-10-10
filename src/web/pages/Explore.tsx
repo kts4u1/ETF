@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { ASSET_CLASS_LABEL, REGION_LABEL, TAG_LABEL } from "../../core/explain";
-import { fmtEok, fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
+import { fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
 import { isOverseas, marketOf } from "../../core/market";
-import { MARKET_FILTERS, MARKET_FILTER_LABEL, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
+import { AUM_FUND_NOTE, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { AssetClass, EtfRecord, MarketFilter, Region } from "../../core/types";
 import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
@@ -159,7 +159,7 @@ export function Explore() {
                   <td className="num">{fmtRatio(volOf(e), 0)}</td>
                   <td className="num">{fmtRatio(mddOf(e), 0)}</td>
                   <td className="num">{fmtFee(e.fee)}</td>
-                  <td className="num">{fmtEok(e.aumEok)}</td>
+                  <td className="num" title={e.aumScope === "fund" ? AUM_FUND_NOTE : undefined}>{aumText(e)}</td>
                   <td className="num">{fmtWon(e.m.avgValue20)}</td>
                   <td className="num">{fmtHistory(e.m.years, e.m.days)}</td>
                 </tr>

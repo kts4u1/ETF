@@ -53,6 +53,11 @@ export function usCollectionRule(): string {
   return `해외(미국) 상장은 순자산 ${fmtEok(US_MIN_AUM_EOK)}원·일평균 거래대금 ${fmtWon(US_MIN_AVG_VALUE_WON)}원 이상만 수집합니다`;
 }
 
+/** 순자산 표기. 펀드 전체 합계(aumScope "fund")는 † 를 붙여 ETF 클래스만의 값이 아님을 알린다. */
+export const aumText = (e: Pick<EtfRecord, "aumEok" | "aumScope">): string => `${fmtEok(e.aumEok)}${e.aumScope === "fund" ? "†" : ""}`;
+
+export const AUM_FUND_NOTE = "† 펀드 전체 순자산: 같은 펀드의 뮤추얼펀드 등 다른 클래스까지 합친 값이라 이 ETF만의 규모보다 훨씬 클 수 있습니다(야후 제공값).";
+
 /** 원화 환산 방식 한 줄. 가격·순자산·차트 근처에 같은 문구로 밝힌다. */
 export const FX_NOTE = "원화 환산: 달러 가격 × 같은 날 원/달러 환율";
 

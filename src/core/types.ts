@@ -119,6 +119,11 @@ export interface EtfRecord {
   changeRate: number | null;
   /** 순자산총액(억원). 해외 상장은 달러 순자산에 기준일 환율을 곱해 환산한 값 */
   aumEok: number;
+  /**
+   * "fund" 이면 aumEok 가 이 ETF 클래스만이 아니라 같은 펀드의 다른 클래스(뮤추얼펀드 등)까지 합친 값이다.
+   * 야후가 펀드 단위 순자산만 주기 때문에 뱅가드 ETF 에서 생긴다(예: VTI 는 실제 ETF 클래스의 몇 배로 나옴). 없으면 ETF 단독 값.
+   */
+  aumScope?: "fund";
   /** 총보수 % (연) */
   fee: number | null;
   /** 최근 12개월 분배율 % */

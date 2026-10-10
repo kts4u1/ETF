@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { typeLine } from "../../core/explain";
-import { fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
+import { fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
-import { FX_NOTE, listingLine, matchRank } from "../../core/market-view";
+import { FX_NOTE, aumText, listingLine, matchRank } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
@@ -18,7 +18,7 @@ const MAX = 4;
 type Row = { label: string; get: (e: EtfRecord) => number | null; fmt: (e: EtfRecord) => string; better: "high" | "low" };
 const ROWS: Row[] = [
   { label: "총보수 (연)", get: (e) => e.fee, fmt: (e) => fmtFee(e.fee), better: "low" },
-  { label: "순자산", get: (e) => e.aumEok, fmt: (e) => fmtEok(e.aumEok), better: "high" },
+  { label: "순자산", get: (e) => e.aumEok, fmt: (e) => aumText(e), better: "high" },
   { label: "일평균 거래대금", get: (e) => e.m.avgValue20, fmt: (e) => fmtWon(e.m.avgValue20), better: "high" },
   { label: "최근 1년", get: (e) => e.m.ret.y1, fmt: (e) => fmtRatio(e.m.ret.y1, 1, true), better: "high" },
   { label: "3년 연평균", get: (e) => e.m.cagr3y, fmt: (e) => fmtRatio(e.m.cagr3y, 1, true), better: "high" },

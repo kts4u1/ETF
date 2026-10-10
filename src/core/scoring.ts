@@ -163,7 +163,7 @@ export function checkEligibility(e: EtfRecord, p: Preferences): Ineligible | nul
   if (e.aumEok < p.minAumEok) {
     return no("small-aum", `순자산 ${Math.round(e.aumEok).toLocaleString("ko-KR")}억원 — 최소 ${p.minAumEok.toLocaleString("ko-KR")}억원 미만`);
   }
-  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return no("low-liquidity", "일평균 거래대금이 3억원 미만이라 사고팔기 어려움");
+  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return no("low-liquidity", `일평균 거래대금이 ${MIN_AVG_VALUE / 1e8}억원 미만이라 사고팔기 어려움`);
   if (!p.includeYoung && e.m.ret.y1 === null) return no("no-track-record", "상장 1년 미만이라 성과 검증 부족 (설정에서 포함 가능)");
   if (p.includeYoung && e.m.ret.m3 === null) return no("too-young", "상장 3개월 미만이라 지표 계산 불가");
   if (p.maxFee !== null && e.fee !== null && e.fee > p.maxFee) return no("high-fee", `총보수 ${e.fee}% — 상한 ${p.maxFee}% 초과`);

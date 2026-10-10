@@ -328,6 +328,8 @@ export function roleOf(etf: EtfRecord): string {
       return "대체(원자재·통화)";
     case "real-asset":
       return "부동산·인프라";
+    case "crypto":
+      return "대체(가상자산)";
     default:
       return "혼합(주식+채권)";
   }
