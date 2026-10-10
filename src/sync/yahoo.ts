@@ -11,10 +11,15 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /** 테스트에서 주입할 수 있는 fetch. 전역 fetch 가 그대로 대입된다. */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-/** 야후에 없는 종목(HTTP 404 또는 본문 오류 코드 "Not Found"). 일시적 오류가 아니므로 재시도하지 않고, 호출자가 "정보 없음"으로 다룬다. */
-export class NotFoundError extends Error {
+/**
+ * 야후에 없는 종목(HTTP 404 또는 본문 오류 코드 "Not Found"). 호출자가 실패가 아니라 "정보 없음"으로 다룬다.
+ * HttpError 의 하위 클래스(404)로 두는 이유: withRetry 가 4xx 를 즉시 실패로 보기 때문이다. 별도 Error 로 만들면
+ * 재시도 대상이 되어 없는 종목마다 지수 백오프(약 13초)를 기다린다.
+ */
+export class NotFoundError extends HttpError {
   constructor(readonly symbol: string) {
-    super(`야후 파이낸스에 ${symbol} 종목이 없습니다(404).`);
+    super(404, `yahoo:${symbol}`);
+    this.message = `야후 파이낸스에 ${symbol} 종목이 없습니다(404).`;
     this.name = "NotFoundError";
   }
 }
@@ -142,7 +147,8 @@ export function parseChart(json: unknown, opts: { symbol?: string; requireAdjClo
     if (t < prevTs) throw bad("차트", "timestamp 가 오름차순이 아님");
     prevTs = t;
     const c = finite(closeArr[i]);
-    const a = finite(adjArr[i]);
+    // 수정종가를 요구하지 않는 자산(환율)은 수정종가만 비어 있어도 종가가 있으면 그 행을 살린다
+    const a = c !== null && opts.requireAdjClose === false ? (finite(adjArr[i]) ?? c) : finite(adjArr[i]);
     if (c === null || a === null || c <= 0 || a <= 0) continue;
     const v = finite(volArr[i]);
     const d = ymdFromUnix(t, gmtoffset);
