@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmtDate } from "../core/format";
 import { DataProvider, useApp } from "./data";
+import { Combo } from "./pages/Combo";
 import { Compare } from "./pages/Compare";
 import { Detail } from "./pages/Detail";
 import { Explore } from "./pages/Explore";
@@ -14,6 +15,7 @@ const NAV = [
   { name: "home", path: "/", label: "추천" },
   { name: "explore", path: "/explore", label: "탐색" },
   { name: "compare", path: "/compare", label: "비교" },
+  { name: "combo", path: "/combo", label: "조합" },
   { name: "learn", path: "/learn", label: "배우기" },
   { name: "method", path: "/method", label: "방법론" },
 ] as const;
@@ -41,6 +43,7 @@ function Shell() {
     case "explore": page = <Explore />; break;
     case "etf": page = <Detail code={route.param} />; break;
     case "compare": page = <Compare codes={(route.query.get("codes") ?? "").split(",").filter(Boolean)} />; break;
+    case "combo": page = <Combo />; break;
     case "learn": page = <Learn />; break;
     case "method": page = <Method />; break;
     default: page = <Home />;

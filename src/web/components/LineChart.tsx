@@ -7,6 +7,8 @@ export interface LineSeries {
   shortLabel?: string;
   /** CSS 색 (var(--series-1) 등) */
   color: string;
+  /** 비교 대상 중 이 선이 주인공일 때(예: 조합) 더 굵게 */
+  emphasis?: boolean;
   values: (number | null)[];
 }
 
@@ -165,7 +167,7 @@ export function LineChart({ dates, series, yFormat, ariaLabel, height = 280 }: P
           <text key={t.i} className="axis" x={x(t.i)} y={height - 6} textAnchor="middle">{t.label}</text>
         ))}
         {series.map((s, k) => (
-          <path key={s.id} d={paths[k]} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          <path key={s.id} d={paths[k]} fill="none" stroke={s.color} strokeWidth={s.emphasis ? 3 : 2} strokeLinejoin="round" strokeLinecap="round" />
         ))}
         {endLabels.map((l) => (
           <text key={l.k} className="end-label" x={width - right + 8} y={l.y} dominantBaseline="middle">

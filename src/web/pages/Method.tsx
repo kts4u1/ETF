@@ -3,7 +3,7 @@ import { fmtRatio } from "../../core/format";
 import { EXCLUSION_LABEL, FACTOR_KEYS, FACTOR_LABELS, HORIZONS, MIN_AVG_VALUE, PROFILES, effectiveWeights } from "../../core/scoring";
 import type { Profile } from "../../core/types";
 import { Disclaimer } from "../components/bits";
-import { useApp, useBacktest, type BacktestSummary } from "../data";
+import { useApp, useBacktest, type BacktestSummary, type ComboCell } from "../data";
 
 const signedPp = (v: number, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%p`;
 
@@ -29,6 +29,36 @@ function Reading({ bt }: { bt: BacktestSummary }) {
           이 모델은 더 높은 수익을 예측한다기보다, <b>비슷한 수익을 노리면서 낙폭·비용·거래량을 함께 걸러 고르는 도구</b>로 보는 편이 정확합니다.
         </li>
         <li>상장폐지된 ETF가 빠져 있어(생존편향) 절대 수익은 과대평가되고, 거래비용·세금·괴리율은 반영하지 않았습니다.</li>
+      </ul>
+    </div>
+  );
+}
+
+const COMBO_ROWS = ["추천 상위 3개 균등", "추천 1위 단독", "조합 3개 · 역변동성", "조합 2개 · 역변동성"] as const;
+const COMBO_MAIN = "조합 3개 · 역변동성";
+
+/** 조합 검증의 해석 문장. 데이터에서 직접 계산해 갱신 후에도 사실과 어긋나지 않게 한다. */
+function ComboReading({ bt }: { bt: BacktestSummary }) {
+  const cells = Object.values(bt.combos ?? {}).flatMap((byH) => Object.values(byH).map((row) => row[COMBO_MAIN])).filter((c): c is ComboCell => !!c);
+  if (!cells.length) return null;
+  const total = cells.length;
+  const lowerMdd = cells.filter((c) => c.dMdd > 0).length;
+  const sigMdd = cells.filter((c) => c.dMddCI !== null && c.dMdd - c.dMddCI > 0).length;
+  const sigRet = cells.filter((c) => c.dRetCI !== null && Math.abs(c.dRet) - c.dRetCI > 0).length;
+  const mddGain = cells.map((c) => c.dMdd * 100);
+  return (
+    <div className="notice">
+      <b>어떻게 읽어야 하나요</b>
+      <ul className="plain">
+        <li>
+          ‘{COMBO_MAIN}’(앱이 제안하는 방식)은 {total}개 구간(투자 성향 × 보유 기간) 중 <b>{lowerMdd}개</b>에서 기준보다 보유 중 최대낙폭이 작았고
+          (개선 폭 {Math.min(...mddGain).toFixed(1)}~{Math.max(...mddGain).toFixed(1)}%p), 겹치지 않는 표본의 95% 구간이 0을 벗어난 구간은 <b>{sigMdd}개</b>입니다.
+        </li>
+        <li>
+          수익 차이는 {total}개 중 <b>{sigRet}개</b>만 0과 구분됩니다. 즉 <b>조합의 효과는 ‘수익을 더 내는 것’이 아니라 ‘나쁜 경우의 낙폭을 줄이는 것’</b>입니다.
+          낙폭 감소는 분산의 기계적 효과라 수익률보다 신뢰할 만하지만, 이 역시 한 번의 장세에서 확인한 것입니다.
+        </li>
+        <li>과거 시점의 구성종목을 알 수 없어 겹침 필터는 이 검증에 포함되지 않았습니다(상관·분산 효과 부분만 검증).</li>
       </ul>
     </div>
   );
@@ -124,6 +154,43 @@ export function Method() {
         ) : <div className="chart-loading">불러오는 중…</div>}
         {bt && <Reading bt={bt} />}
       </section>
+
+      {bt?.combos && (
+        <section className="card" aria-labelledby="m3b">
+          <h2 id="m3b">4단계 · 조합 제안은 효과가 있었나? (워크포워드 검증)</h2>
+          <p>
+            같은 방식으로, 각 월말에 만든 조합을 <b>처음 비중으로 보유</b>했을 때의 실제 결과를 ‘추천 상위 3개를 균등하게 산 것’과 비교했습니다({bt.comboMonths}개 월말, 위 보유 기간 선택과 연동).
+          </p>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>투자 성향</th><th>전략</th><th className="num">평균 수익</th><th className="num">평균 최대낙폭</th><th className="num">나쁜 달(하위 10%) 수익</th><th className="num">낙폭 차이 vs 균등 Top3 (비중첩 95%)</th><th className="num">수익 차이 vs 균등 Top3</th></tr>
+              </thead>
+              <tbody>
+                {(["stable", "balanced", "aggressive"] as Profile[]).flatMap((p) =>
+                  COMBO_ROWS.map((name, k) => {
+                    const c = bt.combos?.[p]?.[m]?.[name];
+                    if (!c) return null;
+                    const base = name === COMBO_ROWS[0];
+                    return (
+                      <tr key={`${p}-${name}`} className={name === COMBO_MAIN ? "current" : ""}>
+                        {k === 0 ? <th scope="row" rowSpan={COMBO_ROWS.length}>{PROFILES[p].label}</th> : null}
+                        <td>{name}{name === COMBO_MAIN && <span className="badge">앱 방식</span>}</td>
+                        <td className="num">{fmtRatio(c.ret)}</td>
+                        <td className="num">{fmtRatio(c.mdd)}</td>
+                        <td className="num">{fmtRatio(c.p10)}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dMdd)} ± ${((c.dMddCI ?? 0) * 100).toFixed(1)}`}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dRet)} ± ${((c.dRetCI ?? 0) * 100).toFixed(1)}`}</td>
+                      </tr>
+                    );
+                  }),
+                )}
+              </tbody>
+            </table>
+          </div>
+          <ComboReading bt={bt} />
+        </section>
+      )}
 
       <section className="card" aria-labelledby="m4">
         <h2 id="m4">알려진 한계</h2>

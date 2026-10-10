@@ -5,7 +5,7 @@ import { Disclaimer } from "../components/bits";
 import { Controls } from "../components/Controls";
 import { EtfCard } from "../components/EtfCard";
 import { useApp } from "../data";
-import { etfHref } from "../router";
+import { etfHref, href } from "../router";
 
 export function Home() {
   const { prefs, rec, snap } = useApp();
@@ -53,6 +53,9 @@ export function Home() {
           </div>
         )}
         <Disclaimer />
+        {top.length >= 3 && (
+          <p className="cta"><a className="btn ghost" href={href("/combo")}>이 후보들로 2~3개 조합 만들기 →</a> <span className="muted">서로 다르게 움직이는 ETF를 섞어 하락 때 덜 빠지게</span></p>
+        )}
       </section>
 
       {perClass.length > 1 && (

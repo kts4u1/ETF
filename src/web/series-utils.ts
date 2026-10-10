@@ -37,3 +37,10 @@ export function indexedSeries(sf: SeriesFile, codes: string[], weeks: number) {
   });
   return { dates, rows, startDate: dates[0] ?? "" };
 }
+
+/** 한 ETF의 주간 종가를 공통 격자 전체 길이로(상장 전은 null) */
+export function fullValues(sf: SeriesFile, code: string): (number | null)[] {
+  const s = sf.s[code];
+  if (!s) return sf.grid.map(() => null);
+  return sf.grid.map((_, g) => (g - s.o >= 0 && g - s.o < s.c.length ? (s.c[g - s.o] as number) : null));
+}

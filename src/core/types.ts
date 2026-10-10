@@ -26,7 +26,8 @@ export type StructureTag =
   | "active" // 액티브 운용
   | "total-return" // TR (분배금 재투자)
   | "dividend" // 배당 지향
-  | "concentrated"; // 단일종목 또는 소수(TOP1~5) 종목 집중
+  | "concentrated" // 단일종목 또는 소수(TOP1~5) 종목 집중
+  | "futures"; // 선물 기반(만기 교체 비용 발생)
 
 export interface Taxonomy {
   assetClass: AssetClass;

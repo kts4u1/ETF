@@ -53,6 +53,8 @@ function detectTags(name: string, leverage: number): StructureTag[] {
   if (has(name, "액티브", "KoAct")) tags.push("active");
   if (re(name, /TR(?![a-zA-Z])/) && !has(name, "TRF", "TREX")) tags.push("total-return");
   if (has(name, "배당", "분배")) tags.push("dividend");
+  // 선물 기반 상품은 만기 교체(롤오버) 비용 때문에 기초자산 가격과 수익률이 다를 수 있다
+  if (has(name, "선물")) tags.push("futures");
   if (
     has(name, "단일종목") ||
     re(name, /TOP\s?[1-5](?!\d)/i) ||

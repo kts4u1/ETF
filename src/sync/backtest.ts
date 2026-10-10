@@ -10,34 +10,17 @@
  *  2. 표본 — 시계열이 한 번의 장세(최근 몇 년)에 집중되어 있고 월별 표본은 서로 겹친다.
  *  3. 거래비용·세금·괴리율 미반영.
  */
-import { readFile, writeFile } from "node:fs/promises";
-import { cleanSeries, computeMetrics, forwardMaxDrawdown, forwardReturnMonths, indexOnOrBefore, shiftMonths } from "../core/metrics";
+import { writeFile } from "node:fs/promises";
+import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/metrics";
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
-import type { EtfRecord, FactorKey, Horizon, PriceSeries, Profile, Scored, Snapshot } from "../core/types";
-import { loadCachedPrices } from "./build-snapshot";
+import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
+import { runComboBacktest } from "./backtest-combos";
+import { loadUniverse, mean, median, monthEnds, stderr, universeAsOf } from "./bt-common";
 
 const FWD_MONTHS = [3, 6, 12] as const;
 const TOP_N = 10;
 const MIN_CANDIDATES = 30;
 
-interface Loaded {
-  rec: EtfRecord; // 정적 정보(이름·분류)만 사용
-  series: PriceSeries;
-}
-
-function mean(xs: number[]): number {
-  return xs.reduce((s, x) => s + x, 0) / xs.length;
-}
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
-}
-function stderr(xs: number[]): number {
-  if (xs.length < 2) return NaN;
-  const m = mean(xs);
-  return Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / (xs.length - 1) / xs.length);
-}
 function spearman(a: number[], b: number[]): number {
   const ra = percentileRanks(a) as number[];
   const rb = percentileRanks(b) as number[];
@@ -52,38 +35,14 @@ function spearman(a: number[], b: number[]): number {
   return saa === 0 || sbb === 0 ? 0 : sab / Math.sqrt(saa * sbb);
 }
 
-/** from 이후 ~ to 이하의 달력상 월말(YYYYMMDD) 목록 */
-function monthEnds(from: string, to: string): string[] {
-  const out: string[] = [];
-  let first = shiftMonths(`${from.slice(0, 6)}01`, 1); // from 다음 달 1일
-  for (;;) {
-    const y = +first.slice(0, 4);
-    const m = +first.slice(4, 6);
-    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    const d = `${first.slice(0, 6)}${String(last).padStart(2, "0")}`;
-    if (d > to) break;
-    out.push(d);
-    first = shiftMonths(first, 1);
-  }
-  return out;
-}
-
 type Chooser = (reps: Scored[]) => Scored[];
 
 interface Fwd { top: number; candMean: number; candMedian: number; topMdd: number; candMdd: number }
 interface Row { t: string; fwd: Record<number, Fwd | null> }
 
 export async function runBacktest(log: (m: string) => void = console.log): Promise<string> {
-  const snap = JSON.parse(await readFile("public/data/snapshot.json", "utf8")) as Snapshot;
-  const loaded: Loaded[] = [];
-  for (const rec of snap.etfs) {
-    const raw = await loadCachedPrices(rec.code);
-    if (!raw) continue;
-    const series = cleanSeries(raw);
-    if (series.dates.length > 60) loaded.push({ rec, series });
-  }
+  const { loaded, asOf: lastDate } = await loadUniverse();
   log(`백테스트 대상 ${loaded.length}개 ETF`);
-  const lastDate = snap.asOf;
   const dates = monthEnds("20201231", shiftMonths(lastDate, -3));
 
   const profiles: Profile[] = ["stable", "balanced", "aggressive"];
@@ -104,21 +63,7 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
   const factorKeys: FactorKey[] = ["ret", "eff", "safety", "trend", "trust"];
 
   for (const t of dates) {
-    // 기준일 시점의 ETF 레코드 구성
-    const universe: { e: EtfRecord; series: PriceSeries; idx: number }[] = [];
-    for (const l of loaded) {
-      const idx = indexOnOrBefore(l.series.dates, t);
-      if (idx < 1) continue;
-      // 기준일이 속한 달에 거래 기록이 있어야 "그 시점에 살아 있던" ETF (거래정지·상장 전 제외)
-      if ((l.series.dates[idx] as string) < `${t.slice(0, 6)}01`) continue;
-      const m = computeMetrics(l.series, idx);
-      if (!m) continue;
-      universe.push({
-        e: { ...l.rec, aumEok: 10_000, fee: null, navGap: null, m },
-        series: l.series,
-        idx,
-      });
-    }
+    const universe = universeAsOf(loaded, t);
     const byCode = new Map(universe.map((u) => [u.e.code, u]));
 
     for (const profile of profiles) {
@@ -179,11 +124,19 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
     }
   }
 
+  const combo = runComboBacktest(loaded, dates, log);
   await writeFile(
     "public/data/backtest.json",
-    JSON.stringify(buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length)),
+    JSON.stringify({
+      ...buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length),
+      combos: combo.summary,
+      comboMonths: combo.nMonths,
+    }),
   );
-  return renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length });
+  return (
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length }) +
+    combo.markdown
+  );
 }
 
 const MODEL = "모델 종합점수";

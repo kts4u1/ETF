@@ -80,3 +80,50 @@ describe("explain", () => {
     expect(ex.reasons.length).toBeLessThanOrEqual(5);
   });
 });
+
+import { explainProposal } from "./explain";
+import type { ComboCandidate, Proposal } from "./portfolio";
+
+describe("explainProposal", () => {
+  const cand = (name: string): ComboCandidate => ({ etf: makeEtf({ name, code: name }), score: 70, returns: [] });
+  const proposal = (over: Partial<Proposal> = {}): Proposal => ({
+    members: [{ cand: cand("KODEX 200"), weight: 0.4 }, { cand: cand("KODEX 국고채10년"), weight: 0.6 }],
+    stats: { weeks: 156, cagr: 0.1, vol: 0.08, mdd: -0.06, sharpe: 0.6, avgMemberVol: 0.14, diversificationRatio: 1.75 },
+    returns: [],
+    quality: 70,
+    diversification: 100,
+    avgOverlap: 2,
+    maxOverlap: null,
+    score: 80,
+    ...over,
+  });
+
+  it("역할 분담·변동성 감소·낙폭을 수치로 설명", () => {
+    const e = explainProposal(proposal(), () => undefined);
+    const text = e.reasons.join(" | ");
+    expect(text).toMatch(/성장\(주식\) 40%/);
+    expect(text).toMatch(/안정\(채권\) 60%/);
+    expect(text).toMatch(/변동성이 8%로/);
+    expect(text).toMatch(/약 43% 낮아집니다/); // 1 - 0.08/0.14
+    expect(text).toMatch(/최대낙폭 -6%/);
+    expect(text).toMatch(/겹침이 평균 2%/);
+  });
+  it("분산 효과가 없으면 솔직하게 말한다", () => {
+    const e = explainProposal(proposal({ stats: { ...proposal().stats, diversificationRatio: 1.01 } }), () => undefined);
+    expect(e.reasons.join(" ")).toMatch(/분산 효과는 크지 않습니다/);
+  });
+  it("겹침 정보가 없으면 주의사항에 안내", () => {
+    const e = explainProposal(proposal({ avgOverlap: null }), () => undefined);
+    expect(e.cautions.join(" ")).toMatch(/겹침을 확인하지 못했습니다/);
+  });
+  it("항상 과거 값·리밸런싱 주의를 포함하고 수익을 약속하지 않는다", () => {
+    const c = explainProposal(proposal(), () => undefined).cautions.join(" ");
+    expect(c).toMatch(/보장이 없습니다/);
+    expect(c).toMatch(/리밸런싱/);
+    expect(c).toMatch(/수익 예측이 아니라/);
+  });
+  it("큰 겹침 쌍은 이름과 함께 알려준다", () => {
+    const e = explainProposal(proposal({ avgOverlap: 30, maxOverlap: { a: "A", b: "B", pct: 30 } }), (c) => ({ name: `이름-${c}` }));
+    expect(e.reasons.join(" ")).toMatch(/이름-A ↔ 이름-B 30%/);
+  });
+});

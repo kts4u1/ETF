@@ -4,11 +4,25 @@ import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
 import { readJson, writeJson } from "./storage";
 
+export interface ComboCell {
+  n: number;
+  ret: number;
+  mdd: number;
+  p10: number;
+  dRet: number;
+  dRetCI: number | null;
+  dMdd: number;
+  dMddCI: number | null;
+  mddWin: number;
+}
 export interface BacktestSummary {
   asOf: string;
   nEtf: number;
   nDates: number;
   profiles: Record<string, Record<string, BacktestCell>>;
+  /** 조합 제안 검증: 성향 → 보유기간(m3/m6/m12) → 전략명 → 결과 */
+  combos?: Record<string, Record<string, Record<string, ComboCell>>>;
+  comboMonths?: number;
 }
 export interface BacktestCell {
   n: number;
