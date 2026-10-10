@@ -157,7 +157,7 @@ nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .chip-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text-3); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; min-height: 32px; }
 .chip-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600; }
 .advanced summary { cursor: pointer; font-weight: 600; color: var(--text-2); }
-.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 6px; }
+.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0 6px; align-items: start; }
 .check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .check input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--accent); }
 .check small { display: block; color: var(--text-3); font-size: 12px; line-height: 1.4; }

@@ -169,7 +169,7 @@ export function Method() {
       </section>
 
       <section className="card" aria-labelledby="m2">
-        <h2 id="m2">2단계 · 6개 항목을 0~100으로 점수화</h2>
+        <h2 id="m2">2단계 · {FACTOR_KEYS.length}개 항목을 0~100으로 점수화</h2>
         <p>후보들 사이에서의 <b>순위(백분위)</b>로 계산하므로, 몇몇 종목이 폭등해도 점수 체계가 왜곡되지 않습니다.</p>
         <table className="table">
           <thead><tr><th>항목</th><th>무엇을 보나</th><th className="num">현재 가중치<small>({PROFILES[prefs.profile].label}·{HORIZONS[prefs.horizon].label})</small></th></tr></thead>
