@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { cleanSeries, computeMetrics, endedEarly, indexOnOrBefore, shiftMonths } from "../core/metrics";
 import type { EtfRecord, PriceSeries, Snapshot } from "../core/types";
 import { loadCachedPrices } from "./build-snapshot";
-import { loadCachedDelisted } from "./delisted";
+import { loadCachedDelisted, type DelistedSkip } from "./delisted";
 
 export interface Loaded {
   rec: EtfRecord; // 정적 정보(이름·분류)만 사용
@@ -21,7 +21,7 @@ export interface AsOfEtf {
   ended: boolean;
 }
 
-export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; delistedIncluded: number }> {
+export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; delistedIncluded: number; delistedSkipped: DelistedSkip[] }> {
   const snap = JSON.parse(await readFile("public/data/snapshot.json", "utf8")) as Snapshot;
   const loaded: Loaded[] = [];
   for (const rec of snap.etfs) {
@@ -32,12 +32,13 @@ export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; 
   }
   // 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF(있을 때만). 생존편향을 줄이기 위한 것이다.
   let delistedIncluded = 0;
-  for (const d of await loadCachedDelisted()) {
+  const { loaded: delisted, skipped: delistedSkipped } = await loadCachedDelisted();
+  for (const d of delisted) {
     if (loaded.some((l) => l.rec.code === d.rec.code)) continue; // 이미 상장 목록에 있으면 중복 방지
     loaded.push({ rec: d.rec, series: d.series, ended: true });
     delistedIncluded++;
   }
-  return { loaded, asOf: snap.asOf, delistedIncluded };
+  return { loaded, asOf: snap.asOf, delistedIncluded, delistedSkipped };
 }
 
 /** 기준일 t 시점에 "살아 있던" ETF와 그 시점까지의 지표. 기준일 이후 데이터는 쓰지 않는다. */
@@ -48,6 +49,9 @@ export function universeAsOf(loaded: Loaded[], t: string): AsOfEtf[] {
     if (idx < 1) continue;
     // 기준일이 속한 달에 거래 기록이 있어야 한다(거래정지·상장 전 제외)
     if ((l.series.dates[idx] as string) < `${t.slice(0, 6)}01`) continue;
+    // 이미 시세가 끝난 ETF(상장폐지)가 기준일 직전에 마지막으로 거래된 경우: 기준일에는 살 수 없고 이후 관측도 없어
+    // 단일 평가에서는 조용히 빠지고 바스켓에서는 현금으로 남는 불일치가 생기므로 유니버스에서 뺀다.
+    if (l.ended && idx === l.series.dates.length - 1 && (l.series.dates[idx] as string) < t) continue;
     const m = computeMetrics(l.series, idx);
     if (!m) continue;
     out.push({ e: { ...l.rec, aumEok: 10_000, fee: null, navGap: null, m }, series: l.series, idx, ended: l.ended });

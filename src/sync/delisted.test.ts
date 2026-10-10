@@ -56,3 +56,16 @@ describe("decodeCsv", () => {
     expect(decodeCsv(euckr)).toBe("종목코드");
   });
 });
+
+describe("normalizeDate: 달력에 없는 날짜", () => {
+  it("존재하지 않는 날짜는 거부", () => {
+    expect(normalizeDate("20260230")).toBeNull();
+    expect(normalizeDate("2026-13-01")).toBeNull();
+    expect(normalizeDate("2026-04-31")).toBeNull();
+    expect(normalizeDate("2026-00-10")).toBeNull();
+  });
+  it("윤일은 윤년에만 인정", () => {
+    expect(normalizeDate("20240229")).toBe("20240229");
+    expect(normalizeDate("20250229")).toBeNull();
+  });
+});

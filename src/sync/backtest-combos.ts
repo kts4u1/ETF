@@ -31,10 +31,11 @@ export function forwardBasket(members: Member[], t: string, months: number): { r
   const target = shiftMonths(t, months);
   // 아직 관측되지 않은 미래(현재 상장 ETF의 시세가 끝남)는 평가 불가. 이미 종료된 ETF는 청산된 것으로 본다.
   for (const m of members) if (!m.ended && (m.series.dates[m.series.dates.length - 1] as string) < target) return null;
-  // 기준 시계열은 종료되지 않은 ETF 중에서 고른다(날짜 축이 끝까지 이어져야 하므로)
-  const live = members.filter((m) => !m.ended);
-  if (live.length === 0) return null;
-  const ref = live[0] as Member;
+  // 날짜 축(기준 시계열)은 종료되지 않은 ETF 중에서 고른다. 전부 종료된 ETF 라면(예: 추천 1위가 상장폐지 ETF)
+  // 시세가 가장 늦게까지 이어진 것을 쓰고, 그 마지막 날에 청산된 것으로 본다(평가에서 조용히 빠지지 않게).
+  const last = (m: Member) => m.series.dates[m.series.dates.length - 1] as string;
+  const ref = members.find((m) => !m.ended) ?? members.reduce<Member | undefined>((a, b) => (a && last(a) >= last(b) ? a : b), undefined);
+  if (!ref) return null;
   const end = indexOnOrBefore(ref.series.dates, target);
   if (end <= ref.idx) return null;
 

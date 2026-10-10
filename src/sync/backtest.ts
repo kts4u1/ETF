@@ -6,11 +6,13 @@
  * 순자산은 게이트를 통과하는 상수로 고정한다.
  *
  * 알려진 편향(반드시 결과 해석에 반영):
- *  1. 생존편향 — 현재 상장 중인 ETF만 있다. 상장폐지된 ETF(대체로 부진)가 빠져 있어 절대 수익은 과대평가된다.
+ *  1. 생존편향 — 기본은 현재 상장 중인 ETF뿐이다. 상장폐지된 ETF(대체로 부진)가 빠져 있어 절대 수익은 과대평가된다.
+ *     data/delisted.csv 가 있으면 그 목록의 ETF는 포함하지만, 목록의 범위(KRX 스냅샷 기준일 이후 폐지분)는 부분적이다.
  *  2. 표본 — 시계열이 한 번의 장세(최근 몇 년)에 집중되어 있고 월별 표본은 서로 겹친다.
  *  3. 거래비용·세금·괴리율 미반영.
  */
 import { writeFile } from "node:fs/promises";
+import { fmtDate, fmtSurvivorshipGap } from "../core/format";
 import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/metrics";
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
@@ -42,8 +44,12 @@ interface Fwd { top: number; candMean: number; candMedian: number; topMdd: numbe
 interface Row { t: string; fwd: Record<number, Fwd | null> }
 
 export async function runBacktest(log: (m: string) => void = console.log): Promise<string> {
-  const { loaded, asOf: lastDate, delistedIncluded } = await loadUniverse();
-  log(`백테스트 대상 ${loaded.length}개 ETF`);
+  const { loaded, asOf: lastDate, delistedIncluded, delistedSkipped } = await loadUniverse();
+  log(`백테스트 대상 ${loaded.length}개 ETF (상장폐지 ${delistedIncluded}개 포함)`);
+  if (delistedSkipped.length) {
+    log(`⚠ data/delisted.csv 의 ${delistedIncluded + delistedSkipped.length}개 중 ${delistedSkipped.length}개는 시세를 읽지 못해 제외했습니다. npm run sync 를 먼저 실행하세요:`);
+    for (const d of delistedSkipped.slice(0, 20)) log(`  - ${d.code} ${d.name}: ${d.reason}`);
+  }
   const dates = monthEnds("20201231", shiftMonths(lastDate, -3));
 
   const profiles: Profile[] = ["stable", "balanced", "aggressive"];
@@ -139,7 +145,7 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
     }),
   );
   return (
-    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSnapshots }) +
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSkipped: delistedSkipped.length, delistedSnapshots }) +
     combo.markdown
   );
 }
@@ -187,7 +193,6 @@ function buildSummary(
 
 // ───────── 리포트 ─────────
 
-const fmtYmd = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(d)}%p`;
 
@@ -222,6 +227,8 @@ function renderReport(a: {
   nEtf: number;
   nDates: number;
   delistedIncluded: number;
+  /** data/delisted.csv 에는 있지만 시세를 읽지 못해 빠진 개수 */
+  delistedSkipped: number;
   delistedSnapshots: string[];
 }): string {
   const L: string[] = [];
@@ -233,13 +240,14 @@ function renderReport(a: {
   L.push("");
   L.push(
     a.delistedIncluded > 0
-      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${a.delistedSnapshots.length ? `, KRX 전종목 시세 ${a.delistedSnapshots.map(fmtYmd).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
+      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${a.delistedSnapshots.length ? `, KRX 전종목 시세 ${a.delistedSnapshots.map(fmtDate).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
         + (a.delistedSnapshots.length
-          ? `**부분 보정입니다** — 가장 이른 기준일(${fmtYmd(a.delistedSnapshots[0] as string)}) 이전에 상장폐지된 ETF와, 기준일 사이에 상장했다가 폐지된 ETF는 여전히 빠져 있어 생존편향이 남아 있습니다.`
+          ? `**부분 보정입니다** — ${fmtSurvivorshipGap(a.delistedSnapshots)}는 여전히 빠져 있어 생존편향이 남아 있습니다.`
           : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
+        + (a.delistedSkipped > 0 ? ` (data/delisted.csv의 ${a.delistedIncluded + a.delistedSkipped}개 중 ${a.delistedSkipped}개는 시세를 읽지 못해 제외 — \`npm run sync\` 필요)` : "")
       : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. KRX 과거 시점 파일로 `npm run derive-delisted`를 실행하거나 `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
   );
-  L.push("> **해석 시 주의** — 생존편향(현재 상장 ETF만 포함), 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. "
+  L.push(`> **해석 시 주의** — ${a.delistedIncluded > 0 ? "생존편향(상장폐지 ETF는 일부만 포함 — 위 항목 참고)" : "생존편향(현재 상장 ETF만 포함)"}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
     + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
   L.push("");
   for (const profile of a.profiles) {

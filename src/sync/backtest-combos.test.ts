@@ -47,9 +47,34 @@ describe("forwardBasket", () => {
     expect(r).toBeNull();
   });
 
-  it("모든 구성이 종료된 ETF면 기준 시계열이 없어 null", () => {
+  it("모든 구성이 종료된 ETF여도 평가에서 빠지지 않는다: 마지막 가격에 청산(시세가 끝난 뒤의 기간)", () => {
     const doomed = make([...flat(10), 90, 80]);
-    expect(forwardBasket([{ series: doomed, idx: 10, w: 1, ended: true }], doomed.dates[10]!, 3)).toBeNull();
+    const r = forwardBasket([{ series: doomed, idx: 10, w: 1, ended: true }], doomed.dates[10]!, 3)!;
+    expect(r).not.toBeNull();
+    expect(r.ret).toBeCloseTo(80 / 90 - 1, 9);
+    expect(r.mdd).toBeCloseTo(80 / 90 - 1, 9);
+  });
+
+  it("종료 표시된 ETF 하나만 담아도, 보유 기간 전체에 시세가 있으면 상장 ETF와 똑같이 계산한다", () => {
+    // 상장폐지 ETF 라도 보유 기간이 끝날 때까지 거래됐다면 청산 가정이 개입하면 안 된다(추천 1위가 이런 경우였다)
+    const asEnded = forwardBasket([{ series: live, idx: 10, w: 1, ended: true }], live.dates[10]!, 3)!;
+    const asLive = forwardBasket([{ series: live, idx: 10, w: 1 }], live.dates[10]!, 3)!;
+    expect(asEnded).toEqual(asLive);
+  });
+
+  it("전부 종료된 여러 ETF: 가장 늦게 끝난 시계열을 날짜 축으로 쓰고 먼저 끝난 것은 마지막 가격을 유지", () => {
+    const early = make([...flat(10), 90, 80]); // 12번째 평일에 끝남
+    const late = make([...flat(10), 100, 110, 120, 130, 140]);
+    const r = forwardBasket(
+      [{ series: early, idx: 10, w: 0.5, ended: true }, { series: late, idx: 10, w: 0.5, ended: true }],
+      early.dates[10]!,
+      3,
+    )!;
+    expect(r.ret).toBeCloseTo(0.5 * (80 / 90) + 0.5 * (140 / 100) - 1, 9);
+  });
+
+  it("구성이 비어 있으면 null", () => {
+    expect(forwardBasket([], "20240101", 3)).toBeNull();
   });
 });
 

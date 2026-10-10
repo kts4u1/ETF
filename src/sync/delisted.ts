@@ -63,7 +63,11 @@ const findCol = (header: string[], names: string[]) => header.findIndex((h) => n
 
 export function normalizeDate(v: string): string | null {
   const m = v.trim().match(/^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})$/);
-  return m ? `${m[1]}${m[2]}${m[3]}` : null;
+  if (!m) return null;
+  // 실제 달력에 있는 날짜인지 확인한다(20260230 같은 값 거부)
+  const d = new Date(Date.UTC(+(m[1] as string), +(m[2] as string) - 1, +(m[3] as string)));
+  const ok = d.getUTCFullYear() === +(m[1] as string) && d.getUTCMonth() === +(m[2] as string) - 1 && d.getUTCDate() === +(m[3] as string);
+  return ok ? `${m[1]}${m[2]}${m[3]}` : null;
 }
 
 export function parseDelistedCsv(text: string): DelistedEntry[] {
@@ -127,17 +131,35 @@ export async function syncDelisted(
   return { ok, skipped };
 }
 
-/** 백테스트 유니버스에 넣을 상장폐지 ETF(정적 정보는 이름 분류만). 캐시에 있는 것만 읽는다. */
-export async function loadCachedDelisted(): Promise<{ rec: EtfRecord; series: PriceSeries }[]> {
+/** 시세 캐시를 읽을 수 없어 백테스트 유니버스에서 빠진 상장폐지 ETF */
+export interface DelistedSkip {
+  code: string;
+  name: string;
+  reason: string;
+}
+
+/**
+ * 백테스트 유니버스에 넣을 상장폐지 ETF(정적 정보는 이름 분류만). 캐시에 있는 것만 읽는다.
+ * 목록(data/delisted.csv)에는 있지만 캐시가 없거나 시세가 짧아 빠진 종목은 skipped 로 돌려준다 —
+ * 조용히 줄어든 채로 "N개 포함"이라고 보고하지 않도록 호출한 쪽에서 알린다.
+ */
+export async function loadCachedDelisted(): Promise<{ loaded: { rec: EtfRecord; series: PriceSeries }[]; skipped: DelistedSkip[] }> {
   const entries = await loadDelistedEntries();
-  const out: { rec: EtfRecord; series: PriceSeries }[] = [];
+  const loaded: { rec: EtfRecord; series: PriceSeries }[] = [];
+  const skipped: DelistedSkip[] = [];
   for (const entry of entries) {
     const path = join(CACHE_DIR, "delisted", `${entry.code}.json`);
-    if (!existsSync(path)) continue;
+    if (!existsSync(path)) {
+      skipped.push({ code: entry.code, name: entry.name, reason: "시세 캐시 없음(npm run sync 필요)" });
+      continue;
+    }
     const cached = JSON.parse(await readFile(path, "utf8")) as { data: CachedDelisted };
     const series = cleanSeries(cached.data.series);
-    if (series.dates.length < 60) continue;
-    out.push({
+    if (series.dates.length < 60) {
+      skipped.push({ code: entry.code, name: entry.name, reason: `시세가 너무 짧음(${series.dates.length}일)` });
+      continue;
+    }
+    loaded.push({
       series,
       rec: {
         code: entry.code,
@@ -156,5 +178,5 @@ export async function loadCachedDelisted(): Promise<{ rec: EtfRecord; series: Pr
       },
     });
   }
-  return out;
+  return { loaded, skipped };
 }
