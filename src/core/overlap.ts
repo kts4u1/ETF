@@ -127,7 +127,7 @@ export function rankOverlaps(
 // ───────── 저장 형식(public/data/holdings.json) ─────────
 
 /** 사용할 수 없는 이유(구성종목 겹침을 계산할 수 없는 ETF) */
-export type UnavailableReason = "derivative-structure" | "low-coverage" | "no-data";
+export type UnavailableReason = "derivative-structure" | "low-coverage" | "no-data" | "overseas-listed";
 
 export interface HoldingsFile {
   version: 1;

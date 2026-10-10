@@ -12,7 +12,8 @@ export type AssetClass =
   | "commodity" // 원자재(금·은·원유 등)
   | "multi" // 혼합자산(주식+채권, TDF, 자산배분)
   | "real-asset" // 리츠·인프라
-  | "fx"; // 통화
+  | "fx" // 통화
+  | "crypto"; // 가상자산(비트코인·이더리움 현물 ETF 등). 국내 상장 ETF에는 없고 해외 상장에만 있다
 
 /** 상장 시장. 국내(KRX)와 미국(NYSE Arca·Nasdaq·Cboe 등). 이전 스냅샷에는 필드가 없고, 없으면 국내로 본다. */
 export type Market = "KR" | "US";
@@ -32,7 +33,9 @@ export type StructureTag =
   | "total-return" // TR (분배금 재투자)
   | "dividend" // 배당 지향
   | "concentrated" // 단일종목 또는 소수(TOP1~5) 종목 집중
-  | "futures"; // 선물 기반(만기 교체 비용 발생)
+  | "futures" // 선물 기반(만기 교체 비용 발생)
+  | "defined-outcome" // 버퍼·목표수익 구조(옵션으로 손실 일부를 막는 대신 상승이 제한됨, 기간 중간에 사면 조건이 달라짐)
+  | "volatility"; // 변동성(VIX) 선물 상품 — 구조상 장기 보유할수록 가치가 줄어드는 경향
 
 export interface Taxonomy {
   assetClass: AssetClass;

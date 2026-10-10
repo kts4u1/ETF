@@ -14,6 +14,7 @@ export const ASSET_CLASS_LABEL: Record<AssetClass, string> = {
   multi: "혼합자산",
   "real-asset": "리츠·인프라",
   fx: "통화",
+  crypto: "가상자산",
 };
 
 export const REGION_LABEL: Record<Region, string> = {
@@ -39,6 +40,8 @@ export const TAG_LABEL: Record<string, string> = {
   dividend: "배당",
   concentrated: "집중투자",
   futures: "선물",
+  "defined-outcome": "버퍼·목표수익",
+  volatility: "변동성(VIX)",
 };
 
 // ───────── 위험 등급 ─────────

@@ -17,6 +17,7 @@ const UNAVAILABLE_TEXT: Record<string, string> = {
   "derivative-structure": "레버리지·인버스·합성(스왑) ETF는 선물·스왑으로 지수를 추종해서, 보유 종목이 실제 노출을 나타내지 않아 겹침을 계산하지 않습니다.",
   "low-coverage": "선물·스왑 등 종목이 아닌 자산 비중이 커서 구성종목으로 실제 노출을 설명하기 어렵습니다.",
   "no-data": "공시된 구성종목 정보가 없습니다.",
+  "overseas-listed": "해외 상장 ETF는 구성종목 전체를 구할 수 없어 겹침을 계산하지 않습니다.",
 };
 
 const pct = (v: number, d = 1) => `${v.toFixed(d)}%`;
