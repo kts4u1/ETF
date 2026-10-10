@@ -13,7 +13,7 @@ import { indexOnOrBefore, shiftMonths } from "../core/metrics";
 import { proposeCombos, selectPool, weeklyReturns, MAX_WEEKS, type ComboCandidate, type Weighting } from "../core/portfolio";
 import { DEFAULT_PREFS, PROFILES, rankEtfs } from "../core/scoring";
 import type { PriceSeries, Profile } from "../core/types";
-import { mean, quantile, stderr, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
+import { mean, phaseCI, quantile, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
 
 const MONTHS = [3, 6, 12] as const;
 const MIN_REPS = 30;
@@ -31,10 +31,11 @@ export function forwardBasket(members: Member[], t: string, months: number): { r
   const target = shiftMonths(t, months);
   // 아직 관측되지 않은 미래(현재 상장 ETF의 시세가 끝남)는 평가 불가. 이미 종료된 ETF는 청산된 것으로 본다.
   for (const m of members) if (!m.ended && (m.series.dates[m.series.dates.length - 1] as string) < target) return null;
-  // 기준 시계열은 종료되지 않은 ETF 중에서 고른다(날짜 축이 끝까지 이어져야 하므로)
-  const live = members.filter((m) => !m.ended);
-  if (live.length === 0) return null;
-  const ref = live[0] as Member;
+  // 날짜 축(기준 시계열)은 종료되지 않은 ETF 중에서 고른다. 전부 종료된 ETF 라면(예: 추천 1위가 상장폐지 ETF)
+  // 시세가 가장 늦게까지 이어진 것을 쓰고, 그 마지막 날에 청산된 것으로 본다(평가에서 조용히 빠지지 않게).
+  const last = (m: Member) => m.series.dates[m.series.dates.length - 1] as string;
+  const ref = members.find((m) => !m.ended) ?? members.reduce<Member | undefined>((a, b) => (a && last(a) >= last(b) ? a : b), undefined);
+  if (!ref) return null;
   const end = indexOnOrBefore(ref.series.dates, target);
   if (end <= ref.idx) return null;
 
@@ -52,6 +53,23 @@ export function forwardBasket(members: Member[], t: string, months: number): { r
     mdd = Math.min(mdd, value / peak - 1);
   }
   return { ret: value - 1, mdd };
+}
+
+/** 한 전략의 한 칸(성향 × 보유기간) 집계: 기준 전략과의 차이와 비중첩 표본의 95% 구간(시작 위상 평균, t 분포). */
+export function comboCell(outs: Outcome[], base: Map<string, Outcome>, m: number): ComboStrategyResult {
+  const dR = outs.map((o) => o.ret - (base.get(o.t) as Outcome).ret);
+  const dM = outs.map((o) => o.mdd - (base.get(o.t) as Outcome).mdd);
+  return {
+    n: outs.length,
+    ret: mean(outs.map((o) => o.ret)),
+    mdd: mean(outs.map((o) => o.mdd)),
+    p10: quantile(outs.map((o) => o.ret), 0.1),
+    dRet: mean(dR),
+    dRetCI: phaseCI(dR, m).ci,
+    dMdd: mean(dM),
+    dMddCI: phaseCI(dM, m).ci,
+    mddWin: dM.filter((x) => x > 1e-9).length / dM.length, // mdd 는 음수: 클수록(0에 가까울수록) 낙폭이 작음
+  };
 }
 
 export interface ComboStrategyResult {
@@ -73,7 +91,7 @@ export type ComboSummary = Record<string, Record<string, Record<string, ComboStr
 
 const BASELINE = "추천 상위 3개 균등";
 
-interface Outcome {
+export interface Outcome {
   t: string;
   ret: number;
   mdd: number;
@@ -149,21 +167,7 @@ export function runComboBacktest(
       for (const s of strategies) {
         const outs = (acc.get(`${profile}|${m}|${s}`) ?? []).filter((o) => base.has(o.t));
         if (outs.length < 5) continue;
-        const dR = outs.map((o) => o.ret - (base.get(o.t) as Outcome).ret);
-        const dM = outs.map((o) => o.mdd - (base.get(o.t) as Outcome).mdd);
-        const indepR = dR.filter((_, i) => i % m === 0);
-        const indepM = dM.filter((_, i) => i % m === 0);
-        row[s] = {
-          n: outs.length,
-          ret: mean(outs.map((o) => o.ret)),
-          mdd: mean(outs.map((o) => o.mdd)),
-          p10: quantile(outs.map((o) => o.ret), 0.1),
-          dRet: mean(dR),
-          dRetCI: indepR.length > 1 ? 1.96 * stderr(indepR) : NaN,
-          dMdd: mean(dM),
-          dMddCI: indepM.length > 1 ? 1.96 * stderr(indepM) : NaN,
-          mddWin: dM.filter((x) => x > 1e-9).length / dM.length, // mdd 는 음수: 클수록(0에 가까울수록) 낙폭이 작음
-        };
+        row[s] = comboCell(outs, base, m);
       }
       summary[profile]![`m${m}`] = row;
     }

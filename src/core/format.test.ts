@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feeWonPer10M, fmtEok, fmtFee, fmtHistory, fmtRatio, fmtWon } from "./format";
+import { feeWonPer10M, fmtEok, fmtFee, fmtHistory, fmtRatio, fmtSnapshotList, fmtSurvivorshipGap, fmtWon } from "./format";
 
 describe("fmtFee", () => {
   it("초저보수는 자릿수를 늘려 구분 가능하게", () => {
@@ -48,5 +48,34 @@ describe("fmtHistory", () => {
     expect(fmtHistory(7.94, 2000)).toBe("8년 이상");
     expect(fmtHistory(2.4, 600)).toBe("2.4년");
     expect(fmtHistory(0.3, 75)).toBe("4개월");
+  });
+});
+
+describe("fmtSurvivorshipGap", () => {
+  it("기준일이 없으면 빈 문자열", () => {
+    expect(fmtSurvivorshipGap([])).toBe("");
+  });
+  it("기준일 1개: 그 날짜 이전 폐지분과 그 이후 신규 상장 후 폐지분이 빠진다고 설명", () => {
+    const t = fmtSurvivorshipGap(["20260410"]);
+    expect(t).toContain("2026-04-10 이전에 상장폐지된 ETF");
+    expect(t).toContain("2026-04-10 이후에 새로 상장했다가 현재 이전에 폐지된 ETF");
+  });
+  it("기준일 여러 개: 가장 이른 날짜만 앞에 쓰고 '기준일들 사이' 공백을 설명", () => {
+    const t = fmtSurvivorshipGap(["20251230", "20260410"]);
+    expect(t).toContain("2025-12-30 이전에 상장폐지된 ETF");
+    expect(t).toContain("기준일들 사이");
+    expect(t).not.toContain("2026-04-10");
+  });
+});
+
+describe("fmtSnapshotList", () => {
+  it("3개 이하면 날짜를 모두, 많으면 개수와 범위만", () => {
+    expect(fmtSnapshotList(["20260410"])).toBe("2026-04-10");
+    expect(fmtSnapshotList(["20251010", "20260410"])).toBe("2025-10-10·2026-04-10");
+    expect(fmtSnapshotList(["20230410", "20231010", "20240411"])).toBe("2023-04-10·2023-10-10·2024-04-11");
+    expect(fmtSnapshotList(["20201230", "20210630", "20211230", "20220630"])).toBe("4개(2020-12-30~2022-06-30)");
+  });
+  it("빈 목록은 빈 문자열", () => {
+    expect(fmtSnapshotList([])).toBe("");
   });
 });

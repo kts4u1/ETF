@@ -1,18 +1,18 @@
 import { useState } from "react";
-import { fmtRatio } from "../../core/format";
+import { fmtRatio, fmtSnapshotList, fmtSurvivorshipGap } from "../../core/format";
 import { EXCLUSION_LABEL, FACTOR_KEYS, FACTOR_LABELS, HORIZONS, MIN_AVG_VALUE, PROFILES, effectiveWeights } from "../../core/scoring";
 import type { Profile } from "../../core/types";
 import { Disclaimer } from "../components/bits";
 import { useApp, useBacktest, type BacktestSummary, type ComboCell } from "../data";
+import { countComboSig, fmtCI, isSig } from "../significance";
 
 const signedPp = (v: number, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%p`;
-
 /** 백테스트 요약에서 직접 계산한 해석 문장. 데이터가 갱신되어도 문장이 사실과 어긋나지 않는다. */
 function Reading({ bt }: { bt: BacktestSummary }) {
   const cells = Object.values(bt.profiles).flatMap((byH) => Object.values(byH));
   const total = cells.length;
   const beat = cells.filter((c) => c.excess > 0).length;
-  const sig = cells.filter((c) => c.indepMean - c.indepCI > 0).length;
+  const sig = cells.filter(isSig).length;
   const naiveHigher = cells.filter((c) => c.naiveTop > c.top).length;
   const naiveWorseDd = cells.filter((c) => c.naiveMdd < c.topMdd).length;
   return (
@@ -34,13 +34,20 @@ function Reading({ bt }: { bt: BacktestSummary }) {
   );
 }
 
-/** 생존편향 문장. 포함한 상장폐지 ETF 수에 따라 자동으로 달라진다. */
+/** 생존편향 문장. 포함한 상장폐지 ETF 수와 목록의 기준일에 따라 자동으로 달라진다. */
 function Survivorship({ bt }: { bt: BacktestSummary }) {
   const n = bt.delistedIncluded ?? 0;
-  return n > 0 ? (
-    <>상장폐지 ETF {n}개를 포함했고 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 계산했지만, 목록에 없는 상장폐지 ETF는 여전히 빠져 있어 절대 수익은 다소 과대평가될 수 있습니다.</>
+  const snaps = bt.delistedSnapshots ?? [];
+  if (n === 0) {
+    return <><b>상장폐지된 ETF를 포함하지 못했습니다</b>(상장폐지 목록은 로그인·접근 제한으로 자동 수집 불가). 그래서 생존편향으로 절대 수익은 과대평가되었을 수 있습니다.</>;
+  }
+  return snaps.length ? (
+    <>
+      KRX 전종목 시세({fmtSnapshotList(snaps)} 기준)에 있었다가 이후 상장폐지된 ETF {n}개를 포함했고, 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 계산했습니다.
+      다만 <b>부분 보정</b>입니다 — {fmtSurvivorshipGap(snaps)}는 여전히 빠져 있어 절대 수익은 다소 과대평가될 수 있습니다.
+    </>
   ) : (
-    <><b>상장폐지된 ETF를 포함하지 못했습니다</b>(상장폐지 목록은 로그인·접근 제한으로 자동 수집 불가). 그래서 생존편향으로 절대 수익은 과대평가되었을 수 있습니다.</>
+    <>상장폐지 ETF {n}개를 포함했고 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 계산했지만, 목록에 없는 상장폐지 ETF는 여전히 빠져 있어 절대 수익은 다소 과대평가될 수 있습니다.</>
   );
 }
 
@@ -52,9 +59,7 @@ function ComboReading({ bt }: { bt: BacktestSummary }) {
   const cells = Object.values(bt.combos ?? {}).flatMap((byH) => Object.values(byH).map((row) => row[COMBO_MAIN])).filter((c): c is ComboCell => !!c);
   if (!cells.length) return null;
   const total = cells.length;
-  const lowerMdd = cells.filter((c) => c.dMdd > 0).length;
-  const sigMdd = cells.filter((c) => c.dMddCI !== null && c.dMdd - c.dMddCI > 0).length;
-  const sigRet = cells.filter((c) => c.dRetCI !== null && Math.abs(c.dRet) - c.dRetCI > 0).length;
+  const { lowerMdd, sigMdd, sigRet } = countComboSig(cells);
   const mddGain = cells.map((c) => c.dMdd * 100);
   return (
     <div className="notice">
@@ -145,13 +150,13 @@ export function Method() {
                 {(["stable", "balanced", "aggressive"] as Profile[]).map((p) => {
                   const c = bt.profiles[p]?.[m];
                   if (!c) return null;
-                  const sig = c.indepMean - c.indepCI > 0;
+                  const sig = isSig(c);
                   return (
                     <tr key={p}>
                       <th scope="row">{PROFILES[p].label}</th>
                       <td className="num">{fmtRatio(c.top)}</td>
                       <td className="num">{fmtRatio(c.cand)}</td>
-                      <td className="num">{signedPp(c.indepMean)} ± {(c.indepCI * 100).toFixed(1)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
+                      <td className="num">{signedPp(c.indepMean)} ± {fmtCI(c.indepCI)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
                       <td className="num">{fmtRatio(c.naiveTop)}</td>
                       <td className="num">{fmtRatio(c.topMdd, 0)} / {fmtRatio(c.naiveMdd, 0)}</td>
                       <td className="num">{c.ic === null ? "-" : c.ic.toFixed(2)}{c.icCI !== null && <small className="muted"> ±{c.icCI.toFixed(2)}</small>}</td>
@@ -162,6 +167,7 @@ export function Method() {
             </table>
           </div>
         ) : <div className="chart-loading">불러오는 중…</div>}
+        {bt && <p className="hint">‘비중첩’은 보유 기간 간격(3·6·12개월)의 달만 뽑아 서로 겹치지 않게 한 표본입니다. 어느 달부터 뽑느냐에 따라 결과가 달라지므로 시작 달을 가능한 모든 경우로 계산해 평균했고, 표본이 2~22개뿐이라 구간은 t 분포로 계산했습니다(n 은 시작 달별 표본 수의 평균을 반올림한 값).</p>}
         {bt && <Reading bt={bt} />}
       </section>
 
@@ -189,8 +195,8 @@ export function Method() {
                         <td className="num">{fmtRatio(c.ret)}</td>
                         <td className="num">{fmtRatio(c.mdd)}</td>
                         <td className="num">{fmtRatio(c.p10)}</td>
-                        <td className="num">{base ? "-" : `${signedPp(c.dMdd)} ± ${((c.dMddCI ?? 0) * 100).toFixed(1)}`}</td>
-                        <td className="num">{base ? "-" : `${signedPp(c.dRet)} ± ${((c.dRetCI ?? 0) * 100).toFixed(1)}`}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dMdd)} ± ${fmtCI(c.dMddCI)}`}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dRet)} ± ${fmtCI(c.dRetCI)}`}</td>
                       </tr>
                     );
                   }),

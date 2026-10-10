@@ -4,5 +4,5 @@ dist/
 *.log
 .DS_Store
 
-# 사용자가 직접 받은 상장폐지 ETF 목록(개인 데이터). 형식은 data/README.md
-data/delisted.csv
+# data/delisted.csv · data/delisted.meta.json 은 커밋한다: 공개 사실(KRX 종목 목록 + 네이버 시세)에서
+# 만든 것이고, 커밋된 백테스트 결과가 이 파일에 의존한다. 만드는 방법은 data/README.md

@@ -25,6 +25,8 @@ export interface BacktestSummary {
   comboMonths?: number;
   /** 백테스트에 포함된 상장폐지 ETF 수(0이면 생존편향 미보정) */
   delistedIncluded?: number;
+  /** 상장폐지 목록을 만든 KRX 스냅샷 기준일(YYYYMMDD, 오름차순). 이 날짜 이후에 폐지된 ETF만 확실히 포함됨 */
+  delistedSnapshots?: string[];
 }
 export interface BacktestCell {
   n: number;
@@ -34,7 +36,8 @@ export interface BacktestCell {
   win: number;
   indepN: number;
   indepMean: number;
-  indepCI: number;
+  /** 비중첩 표본이 2개 미만이면 null(JSON 직렬화 시 NaN → null) */
+  indepCI: number | null;
   topMdd: number;
   candMdd: number;
   naiveTop: number;
@@ -58,6 +61,7 @@ interface AppData {
 }
 
 const Ctx = createContext<AppData | null>(null);
+// 앱 이름이 바뀌어도 저장된 설정(및 App.tsx 의 테마 키)이 사라지지 않도록 예전 접두사를 유지한다.
 const PREFS_KEY = "etf-picker:prefs:v1";
 
 function loadPrefs(): Preferences {

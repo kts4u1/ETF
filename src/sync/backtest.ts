@@ -6,16 +6,19 @@
  * 순자산은 게이트를 통과하는 상수로 고정한다.
  *
  * 알려진 편향(반드시 결과 해석에 반영):
- *  1. 생존편향 — 현재 상장 중인 ETF만 있다. 상장폐지된 ETF(대체로 부진)가 빠져 있어 절대 수익은 과대평가된다.
+ *  1. 생존편향 — 기본은 현재 상장 중인 ETF뿐이다. 상장폐지된 ETF(대체로 부진)가 빠져 있어 절대 수익은 과대평가된다.
+ *     data/delisted.csv 가 있으면 그 목록의 ETF는 포함하지만, 목록의 범위(KRX 스냅샷 기준일 이후 폐지분)는 부분적이다.
  *  2. 표본 — 시계열이 한 번의 장세(최근 몇 년)에 집중되어 있고 월별 표본은 서로 겹친다.
  *  3. 거래비용·세금·괴리율 미반영.
  */
 import { writeFile } from "node:fs/promises";
+import { fmtSnapshotList, fmtSurvivorshipGap } from "../core/format";
 import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/metrics";
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
 import { runComboBacktest } from "./backtest-combos";
-import { loadUniverse, mean, median, monthEnds, stderr, universeAsOf } from "./bt-common";
+import { icInterval, indepRangeText, loadUniverse, mean, median, monthEnds, phaseCI, universeAsOf } from "./bt-common";
+import { loadDelistedMeta } from "./derive-delisted";
 
 const FWD_MONTHS = [3, 6, 12] as const;
 const TOP_N = 10;
@@ -41,8 +44,12 @@ interface Fwd { top: number; candMean: number; candMedian: number; topMdd: numbe
 interface Row { t: string; fwd: Record<number, Fwd | null> }
 
 export async function runBacktest(log: (m: string) => void = console.log): Promise<string> {
-  const { loaded, asOf: lastDate, delistedIncluded } = await loadUniverse();
-  log(`백테스트 대상 ${loaded.length}개 ETF`);
+  const { loaded, asOf: lastDate, delistedIncluded, delistedSkipped } = await loadUniverse();
+  log(`백테스트 대상 ${loaded.length}개 ETF (상장폐지 ${delistedIncluded}개 포함)`);
+  if (delistedSkipped.length) {
+    log(`⚠ data/delisted.csv 의 ${delistedIncluded + delistedSkipped.length}개 중 ${delistedSkipped.length}개는 시세를 읽지 못해 제외했습니다. npm run sync 를 먼저 실행하세요:`);
+    for (const d of delistedSkipped.slice(0, 20)) log(`  - ${d.code} ${d.name}: ${d.reason}`);
+  }
   const dates = monthEnds("20201231", shiftMonths(lastDate, -3));
 
   const profiles: Profile[] = ["stable", "balanced", "aggressive"];
@@ -125,17 +132,22 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
   }
 
   const combo = runComboBacktest(loaded, dates, log);
+  // 상장폐지 목록을 만든 KRX 스냅샷 기준일(없으면 직접 만든 목록이라 범위를 알 수 없다)
+  const delistedSnapshots = delistedIncluded > 0 ? ((await loadDelistedMeta())?.snapshots ?? []) : [];
   await writeFile(
     "public/data/backtest.json",
     JSON.stringify({
       ...buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length),
       delistedIncluded,
+      delistedSnapshots,
       combos: combo.summary,
       comboMonths: combo.nMonths,
     }),
   );
+  const nIndep = profiles.flatMap((p) => FWD_MONTHS.map((m) => summarize(results.get(`${p}|${MODEL}`) ?? [], m).indepN));
+  const indepRange = indepRangeText(nIndep);
   return (
-    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded }) +
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSkipped: delistedSkipped.length, delistedSnapshots, indepRange }) +
     combo.markdown
   );
 }
@@ -144,7 +156,7 @@ const MODEL = "모델 종합점수";
 const NAIVE = "(비교) 최근 1년 수익률 순";
 
 /** 앱의 '방법론·한계' 화면이 읽는 요약. 모델과 단순 1년 수익률 순만 담는다. */
-function buildSummary(
+export function buildSummary(
   results: Map<string, Row[]>,
   icAcc: Map<string, Map<number, number[]>>,
   profiles: Profile[],
@@ -159,7 +171,7 @@ function buildSummary(
       const model = summarize(results.get(`${profile}|${MODEL}`) ?? [], m);
       const naive = summarize(results.get(`${profile}|${NAIVE}`) ?? [], m);
       const ic = icAcc.get(`${profile}|total`)?.get(m) ?? [];
-      const icIndep = ic.filter((_, i) => i % m === 0);
+      const icCI = icInterval(ic, m);
       out[profile]![`m${m}`] = {
         n: model.n,
         top: model.top,
@@ -174,7 +186,7 @@ function buildSummary(
         naiveTop: naive.top,
         naiveMdd: naive.topMdd,
         ic: ic.length ? mean(ic) : null,
-        icCI: icIndep.length > 1 ? 1.96 * stderr(icIndep) : null,
+        icCI,
       };
     }
   }
@@ -186,14 +198,13 @@ function buildSummary(
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(d)}%p`;
 
-function summarize(rows: Row[], m: number) {
+export function summarize(rows: Row[], m: number) {
   const valid = rows.filter((r) => r.fwd[m]);
   const excess = valid.map((r) => r.fwd[m]!.top - r.fwd[m]!.candMedian);
   const tops = valid.map((r) => r.fwd[m]!.top);
   const cands = valid.map((r) => r.fwd[m]!.candMedian);
-  // 겹치지 않는 표본: m개월 간격
-  const step = m;
-  const indep = excess.filter((_, i) => i % step === 0);
+  // 겹치지 않는 표본: m개월 간격으로 뽑되, 시작 위상 m가지를 모두 평균한다(phaseCI)
+  const indep = phaseCI(excess, m);
   return {
     n: valid.length,
     topMdd: valid.length ? mean(valid.map((r) => r.fwd[m]!.topMdd)) : NaN,
@@ -202,9 +213,39 @@ function summarize(rows: Row[], m: number) {
     cand: cands.length ? mean(cands) : NaN,
     excess: excess.length ? mean(excess) : NaN,
     win: excess.length ? excess.filter((x) => x > 0).length / excess.length : NaN,
-    indepN: indep.length,
-    indepMean: indep.length ? mean(indep) : NaN,
-    indepCI: indep.length > 1 ? 1.96 * stderr(indep) : NaN,
+    indepN: indep.n,
+    indepMean: indep.mean,
+    indepCI: indep.ci,
+  };
+}
+
+/** 리포트 IC 표의 한 칸: 평균과(계산할 수 있으면) 비중첩 표본의 95% 구간 반폭. */
+export function icCell(xs: number[], m: number): string {
+  if (!xs.length) return "-";
+  const ci = icInterval(xs, m);
+  return `${mean(xs).toFixed(3)}${ci === null ? "" : ` ±${ci.toFixed(3)}`}`;
+}
+
+/** 리포트의 생존편향 문구. 상장폐지 목록이 있는지·얼마나 읽었는지·어느 기준일 것인지에 따라 달라진다. */
+export function survivorshipText(a: { delistedIncluded: number; delistedSkipped: number; delistedSnapshots: string[] }): { bullet: string; caution: string } {
+  const skipped = a.delistedSkipped > 0
+    ? ` data/delisted.csv의 ${a.delistedIncluded + a.delistedSkipped}개 중 ${a.delistedSkipped}개는 시세를 읽지 못해 제외했습니다 — \`npm run sync\` 필요.`
+    : "";
+  if (a.delistedIncluded > 0) {
+    const snaps = a.delistedSnapshots;
+    return {
+      bullet:
+        `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${snaps.length ? `, KRX 전종목 시세 ${fmtSnapshotList(snaps)} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
+        + (snaps.length ? `**부분 보정입니다** — ${fmtSurvivorshipGap(snaps)}는 여전히 빠져 있어 생존편향이 남아 있습니다.` : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
+        + skipped,
+      caution: "생존편향(상장폐지 ETF는 일부만 포함 — 위 항목 참고)",
+    };
+  }
+  return {
+    bullet:
+      "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. KRX 과거 시점 파일로 `npm run derive-delisted`를 실행하거나 `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고)."
+      + skipped,
+    caution: "생존편향(현재 상장 ETF만 포함)",
   };
 }
 
@@ -217,6 +258,11 @@ function renderReport(a: {
   nEtf: number;
   nDates: number;
   delistedIncluded: number;
+  /** data/delisted.csv 에는 있지만 시세를 읽지 못해 빠진 개수 */
+  delistedSkipped: number;
+  delistedSnapshots: string[];
+  /** 모델 칸들의 겹치지 않는 표본 수 범위(예: "2~22") */
+  indepRange: string;
 }): string {
   const L: string[] = [];
   L.push("# 백테스트 리포트 (워크포워드)");
@@ -225,13 +271,10 @@ function renderReport(a: {
   L.push("- 방법: 각 월말 시점의 데이터만으로 점수 산출 → 선택한 상위 10개(자산군·테마당 최대 2개)의 이후 3·6·12개월 실제 수익률을 같은 시점 후보군(게이트 통과, 동일 지수 대표) **중앙값**과 비교.");
   L.push("- 후보군·투자 성향 한도·게이트는 실제 앱과 같은 코드를 사용. 단, 과거 시점의 총보수·순자산은 알 수 없어 비용은 중립(50점), 순자산은 통과값으로 고정.");
   L.push("");
-  L.push(
-    a.delistedIncluded > 0
-      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산해 생존편향을 줄였습니다(완전히 제거되지는 않음: 목록에 없는 상장폐지 ETF는 여전히 빠져 있음).`
-      : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
-  );
-  L.push("> **해석 시 주의** — 생존편향(현재 상장 ETF만 포함), 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. "
-    + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
+  const sv = survivorshipText(a);
+  L.push(sv.bullet);
+  L.push(`> **해석 시 주의** — ${sv.caution}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
+    + `'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본(m개월 간격, 시작 월 m가지를 모두 평균)의 95% 신뢰구간(표본이 ${a.indepRange}개뿐이라 t 분포 사용)이 0을 포함하면 우연과 구분되지 않습니다.`);
   L.push("");
   for (const profile of a.profiles) {
     L.push(`## ${PROFILES[profile].label} (${profile})`);
@@ -255,13 +298,7 @@ function renderReport(a: {
     L.push("| 팩터 | 3개월 | 6개월 | 12개월 |");
     L.push("|---|---:|---:|---:|");
     for (const k of ["ret", "eff", "safety", "trend", "trust", "total"]) {
-      const cells = FWD_MONTHS.map((m) => {
-        const xs = a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [];
-        if (!xs.length) return "-";
-        const indep = xs.filter((_, i) => i % m === 0);
-        const ci = indep.length > 1 ? 1.96 * stderr(indep) : NaN;
-        return `${mean(xs).toFixed(3)}${Number.isFinite(ci) ? ` ±${ci.toFixed(3)}` : ""}`;
-      });
+      const cells = FWD_MONTHS.map((m) => icCell(a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [], m));
       L.push(`| ${k === "total" ? "**종합점수**" : k} | ${cells.join(" | ")} |`);
     }
     L.push("");
