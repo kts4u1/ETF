@@ -4,7 +4,7 @@ import { EXCLUSION_LABEL, FACTOR_KEYS, FACTOR_LABELS, HORIZONS, MIN_AVG_VALUE, P
 import type { Profile } from "../../core/types";
 import { Disclaimer } from "../components/bits";
 import { useApp, useBacktest, type BacktestSummary, type ComboCell } from "../data";
-import { fmtCI, isSig, isSigDrop, isSigRet } from "../significance";
+import { countComboSig, fmtCI, isSig } from "../significance";
 
 const signedPp = (v: number, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%p`;
 /** 백테스트 요약에서 직접 계산한 해석 문장. 데이터가 갱신되어도 문장이 사실과 어긋나지 않는다. */
@@ -59,9 +59,7 @@ function ComboReading({ bt }: { bt: BacktestSummary }) {
   const cells = Object.values(bt.combos ?? {}).flatMap((byH) => Object.values(byH).map((row) => row[COMBO_MAIN])).filter((c): c is ComboCell => !!c);
   if (!cells.length) return null;
   const total = cells.length;
-  const lowerMdd = cells.filter((c) => c.dMdd > 0).length;
-  const sigMdd = cells.filter(isSigDrop).length;
-  const sigRet = cells.filter(isSigRet).length;
+  const { lowerMdd, sigMdd, sigRet } = countComboSig(cells);
   const mddGain = cells.map((c) => c.dMdd * 100);
   return (
     <div className="notice">
@@ -169,7 +167,7 @@ export function Method() {
             </table>
           </div>
         ) : <div className="chart-loading">불러오는 중…</div>}
-        {bt && <p className="hint">‘비중첩’은 보유 기간 간격(3·6·12개월)의 달만 뽑아 서로 겹치지 않게 한 표본입니다. 어느 달부터 뽑느냐에 따라 결과가 달라지므로 시작 달을 가능한 모든 경우로 계산해 평균했고, 표본이 2~22개뿐이라 구간은 t 분포로 계산했습니다(n 은 시작 달 하나당 표본 수).</p>}
+        {bt && <p className="hint">‘비중첩’은 보유 기간 간격(3·6·12개월)의 달만 뽑아 서로 겹치지 않게 한 표본입니다. 어느 달부터 뽑느냐에 따라 결과가 달라지므로 시작 달을 가능한 모든 경우로 계산해 평균했고, 표본이 2~22개뿐이라 구간은 t 분포로 계산했습니다(n 은 시작 달별 표본 수의 평균을 반올림한 값).</p>}
         {bt && <Reading bt={bt} />}
       </section>
 

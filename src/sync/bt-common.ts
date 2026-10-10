@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { cleanSeries, computeMetrics, endedEarly, indexOnOrBefore, shiftMonths } from "../core/metrics";
 import type { EtfRecord, PriceSeries, Snapshot } from "../core/types";
-import { loadCachedPrices } from "./build-snapshot";
+import { loadCachedList, loadCachedPrices } from "./build-snapshot";
 import { loadCachedDelisted, type DelistedSkip } from "./delisted";
 
 export interface Loaded {
@@ -30,7 +30,9 @@ export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; 
     const series = cleanSeries(raw);
     if (series.dates.length > 60) loaded.push({ rec, series, ended: endedEarly(series, snap.asOf) });
   }
-  assertUniverseUsable(loaded.length, snap.etfs.length, process.env.BACKTEST_ALLOW_PARTIAL === "1");
+  // 기준은 스냅샷(sync --limit N 이 N개로 줄여 쓴다)과 캐시된 전체 목록 중 큰 쪽이다
+  const fullCount = Math.max(snap.etfs.length, (await loadCachedList())?.length ?? 0);
+  assertUniverseUsable(loaded.length, fullCount, process.env.BACKTEST_ALLOW_PARTIAL === "1");
   // 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF(있을 때만). 생존편향을 줄이기 위한 것이다.
   let delistedIncluded = 0;
   const { loaded: delisted, skipped: delistedSkipped } = await loadCachedDelisted();
@@ -126,6 +128,17 @@ export function phaseCI(xs: number[], m: number): { mean: number; ci: number; n:
   }
   if (!means.length) return { mean: xs.length ? mean(xs) : NaN, ci: NaN, n: Math.floor(xs.length / m) };
   return { mean: mean(means), ci: mean(cis), n: Math.round(mean(sizes)) };
+}
+
+/** IC 의 비중첩 표본 구간 반폭(없으면 null). 요약 JSON 과 리포트의 IC 표가 같은 값을 쓰도록 한 곳에 둔다. */
+export function icInterval(ic: number[], m: number): number | null {
+  const ci = phaseCI(ic, m).ci;
+  return Number.isFinite(ci) ? ci : null;
+}
+
+/** 칸들의 겹치지 않는 표본 수 범위 표기(예: "2~22"). */
+export function indepRangeText(ns: number[]): string {
+  return `${Math.min(...ns)}~${Math.max(...ns)}`;
 }
 
 /**

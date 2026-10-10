@@ -15,6 +15,15 @@ export function isSigRet(c: { dRet: number; dRetCI: number | null }): boolean {
   return c.dRetCI !== null && Number.isFinite(c.dRetCI) && Math.abs(c.dRet) - c.dRetCI > 0;
 }
 
+/** 조합 주력 전략 칸들의 집계: 낙폭이 작은 칸 수, 낙폭 차이가 유의한 칸 수, 수익 차이가 유의한 칸 수. */
+export function countComboSig(cells: { dMdd: number; dMddCI: number | null; dRet: number; dRetCI: number | null }[]): { lowerMdd: number; sigMdd: number; sigRet: number } {
+  return {
+    lowerMdd: cells.filter((c) => c.dMdd > 0).length,
+    sigMdd: cells.filter(isSigDrop).length,
+    sigRet: cells.filter(isSigRet).length,
+  };
+}
+
 /** 구간 반폭을 %p 로 표기. 없으면 '–'. */
 export function fmtCI(ci: number | null): string {
   return ci === null || !Number.isFinite(ci) ? "–" : (ci * 100).toFixed(1);

@@ -17,7 +17,7 @@ import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/me
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
 import { runComboBacktest } from "./backtest-combos";
-import { loadUniverse, mean, median, monthEnds, phaseCI, universeAsOf } from "./bt-common";
+import { icInterval, indepRangeText, loadUniverse, mean, median, monthEnds, phaseCI, universeAsOf } from "./bt-common";
 import { loadDelistedMeta } from "./derive-delisted";
 
 const FWD_MONTHS = [3, 6, 12] as const;
@@ -145,7 +145,7 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
     }),
   );
   const nIndep = profiles.flatMap((p) => FWD_MONTHS.map((m) => summarize(results.get(`${p}|${MODEL}`) ?? [], m).indepN));
-  const indepRange = `${Math.min(...nIndep)}~${Math.max(...nIndep)}`;
+  const indepRange = indepRangeText(nIndep);
   return (
     renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSkipped: delistedSkipped.length, delistedSnapshots, indepRange }) +
     combo.markdown
@@ -156,7 +156,7 @@ const MODEL = "모델 종합점수";
 const NAIVE = "(비교) 최근 1년 수익률 순";
 
 /** 앱의 '방법론·한계' 화면이 읽는 요약. 모델과 단순 1년 수익률 순만 담는다. */
-function buildSummary(
+export function buildSummary(
   results: Map<string, Row[]>,
   icAcc: Map<string, Map<number, number[]>>,
   profiles: Profile[],
@@ -171,7 +171,7 @@ function buildSummary(
       const model = summarize(results.get(`${profile}|${MODEL}`) ?? [], m);
       const naive = summarize(results.get(`${profile}|${NAIVE}`) ?? [], m);
       const ic = icAcc.get(`${profile}|total`)?.get(m) ?? [];
-      const icCI = phaseCI(ic, m).ci;
+      const icCI = icInterval(ic, m);
       out[profile]![`m${m}`] = {
         n: model.n,
         top: model.top,
@@ -186,7 +186,7 @@ function buildSummary(
         naiveTop: naive.top,
         naiveMdd: naive.topMdd,
         ic: ic.length ? mean(ic) : null,
-        icCI: Number.isFinite(icCI) ? icCI : null,
+        icCI,
       };
     }
   }
@@ -217,6 +217,13 @@ export function summarize(rows: Row[], m: number) {
     indepMean: indep.mean,
     indepCI: indep.ci,
   };
+}
+
+/** 리포트 IC 표의 한 칸: 평균과(계산할 수 있으면) 비중첩 표본의 95% 구간 반폭. */
+export function icCell(xs: number[], m: number): string {
+  if (!xs.length) return "-";
+  const ci = icInterval(xs, m);
+  return `${mean(xs).toFixed(3)}${ci === null ? "" : ` ±${ci.toFixed(3)}`}`;
 }
 
 /** 리포트의 생존편향 문구. 상장폐지 목록이 있는지·얼마나 읽었는지·어느 기준일 것인지에 따라 달라진다. */
@@ -291,12 +298,7 @@ function renderReport(a: {
     L.push("| 팩터 | 3개월 | 6개월 | 12개월 |");
     L.push("|---|---:|---:|---:|");
     for (const k of ["ret", "eff", "safety", "trend", "trust", "total"]) {
-      const cells = FWD_MONTHS.map((m) => {
-        const xs = a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [];
-        if (!xs.length) return "-";
-        const ci = phaseCI(xs, m).ci;
-        return `${mean(xs).toFixed(3)}${Number.isFinite(ci) ? ` ±${ci.toFixed(3)}` : ""}`;
-      });
+      const cells = FWD_MONTHS.map((m) => icCell(a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [], m));
       L.push(`| ${k === "total" ? "**종합점수**" : k} | ${cells.join(" | ")} |`);
     }
     L.push("");

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { EtfRecord, PriceSeries } from "../core/types";
-import { assertUniverseUsable, ci95, mean, phaseCI, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach } from "vitest";
+import { assertUniverseUsable, ci95, icInterval, indepRangeText, loadUniverse, mean, phaseCI, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
 
 /** 2023-01-02 부터 평일마다 하나씩, 완만하게 오르는 시세 */
 function make(n: number): PriceSeries {
@@ -134,5 +138,64 @@ describe("assertUniverseUsable: 시세 캐시가 비었을 때 커밋된 결과�
     expect(() => assertUniverseUsable(1172, 1172)).not.toThrow();
     expect(() => assertUniverseUsable(0, 1172, true)).not.toThrow();
     expect(() => assertUniverseUsable(0, 0)).not.toThrow();
+  });
+});
+
+describe("phaseCI: 위상별 평균 표본 수가 x.5 일 때의 반올림", () => {
+  it("63개월, m=6 → 위상 크기 11·11·11·10·10·10, n=11(커밋된 결과의 n=11 이 이 반올림에 의존)", () => {
+    const xs = Array.from({ length: 63 }, (_, i) => Math.sin(i) / 50);
+    expect(phaseCI(xs, 6).n).toBe(11);
+  });
+});
+
+describe("icInterval / indepRangeText", () => {
+  it("icInterval: phaseCI 의 구간과 같고, 표본이 모자라면 null(JSON 으로 NaN 이 되지 않게)", () => {
+    const xs = Array.from({ length: 30 }, (_, i) => Math.cos(i) / 10);
+    expect(icInterval(xs, 3)).toBeCloseTo(phaseCI(xs, 3).ci, 12);
+    expect(icInterval(xs, 6)).not.toBeCloseTo(phaseCI(xs, 3).ci, 6); // m 이 구간에 반영된다
+    expect(icInterval([0.1, 0.2], 12)).toBeNull();
+  });
+  it("indepRangeText: 최소~최대", () => {
+    expect(indepRangeText([22, 11, 5, 2, 11])).toBe("2~22");
+    expect(indepRangeText([4])).toBe("4~4");
+  });
+});
+
+describe("loadUniverse: 시세 캐시가 모자랄 때 중단(커밋된 결과를 덮어쓰지 않기 위해)", () => {
+  let dir = "";
+  let prev = "";
+  const writeSnapshot = (n: number) => writeFile("public/data/snapshot.json", JSON.stringify({ version: 1, generatedAt: "", asOf: "20261008", source: "t", etfs: Array.from({ length: n }, (_, i) => ({ code: String(100000 + i), name: "t" })) }));
+  beforeEach(async () => {
+    prev = process.cwd();
+    dir = await mkdtemp(join(tmpdir(), "load-universe-"));
+    process.chdir(dir);
+    await mkdir("public/data", { recursive: true });
+    await mkdir(".cache/naver/price", { recursive: true });
+  });
+  afterEach(async () => {
+    delete process.env.BACKTEST_ALLOW_PARTIAL;
+    process.chdir(prev);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("캐시가 비어 있으면 던진다", async () => {
+    await writeSnapshot(40);
+    await expect(loadUniverse()).rejects.toThrow(/npm run sync/);
+  });
+  it("sync --limit N 으로 스냅샷이 줄었어도 캐시된 전체 목록을 기준으로 중단한다", async () => {
+    await writeSnapshot(5); // --limit 5 가 남긴 스냅샷
+    await writeFile(".cache/naver/list.json", JSON.stringify({ fetchedOn: "20261010", data: Array.from({ length: 1172 }, (_, i) => ({ code: String(100000 + i), name: "t" })) }));
+    // 시세 캐시는 5개 중 5개 읽혔더라도(100%) 전체 목록 1172개의 절반에 못 미친다
+    for (let i = 0; i < 5; i++) {
+      const dates = Array.from({ length: 80 }, (_, k) => `2026${String(1 + Math.floor(k / 28)).padStart(2, "0")}${String(1 + (k % 28)).padStart(2, "0")}`);
+      await writeFile(`.cache/naver/price/${100000 + i}.json`, JSON.stringify({ fetchedOn: "20261010", data: { dates, close: dates.map((_, k) => 1000 + k), volume: dates.map(() => 10) } }));
+    }
+    await expect(loadUniverse()).rejects.toThrow(/1172개 중 5개/);
+  });
+  it("BACKTEST_ALLOW_PARTIAL=1 이면 통과한다", async () => {
+    await writeSnapshot(40);
+    process.env.BACKTEST_ALLOW_PARTIAL = "1";
+    const r = await loadUniverse();
+    expect(r.loaded).toHaveLength(0);
   });
 });
