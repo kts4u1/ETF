@@ -218,6 +218,29 @@ function summarize(rows: Row[], m: number) {
   };
 }
 
+/** 리포트의 생존편향 문구. 상장폐지 목록이 있는지·얼마나 읽었는지·어느 기준일 것인지에 따라 달라진다. */
+export function survivorshipText(a: { delistedIncluded: number; delistedSkipped: number; delistedSnapshots: string[] }): { bullet: string; caution: string } {
+  const skipped = a.delistedSkipped > 0
+    ? ` data/delisted.csv의 ${a.delistedIncluded + a.delistedSkipped}개 중 ${a.delistedSkipped}개는 시세를 읽지 못해 제외했습니다 — \`npm run sync\` 필요.`
+    : "";
+  if (a.delistedIncluded > 0) {
+    const snaps = a.delistedSnapshots;
+    return {
+      bullet:
+        `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${snaps.length ? `, KRX 전종목 시세 ${snaps.map(fmtDate).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
+        + (snaps.length ? `**부분 보정입니다** — ${fmtSurvivorshipGap(snaps)}는 여전히 빠져 있어 생존편향이 남아 있습니다.` : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
+        + skipped,
+      caution: "생존편향(상장폐지 ETF는 일부만 포함 — 위 항목 참고)",
+    };
+  }
+  return {
+    bullet:
+      "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. KRX 과거 시점 파일로 `npm run derive-delisted`를 실행하거나 `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고)."
+      + skipped,
+    caution: "생존편향(현재 상장 ETF만 포함)",
+  };
+}
+
 function renderReport(a: {
   results: Map<string, Row[]>;
   icAcc: Map<string, Map<number, number[]>>;
@@ -238,16 +261,9 @@ function renderReport(a: {
   L.push("- 방법: 각 월말 시점의 데이터만으로 점수 산출 → 선택한 상위 10개(자산군·테마당 최대 2개)의 이후 3·6·12개월 실제 수익률을 같은 시점 후보군(게이트 통과, 동일 지수 대표) **중앙값**과 비교.");
   L.push("- 후보군·투자 성향 한도·게이트는 실제 앱과 같은 코드를 사용. 단, 과거 시점의 총보수·순자산은 알 수 없어 비용은 중립(50점), 순자산은 통과값으로 고정.");
   L.push("");
-  L.push(
-    a.delistedIncluded > 0
-      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${a.delistedSnapshots.length ? `, KRX 전종목 시세 ${a.delistedSnapshots.map(fmtDate).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
-        + (a.delistedSnapshots.length
-          ? `**부분 보정입니다** — ${fmtSurvivorshipGap(a.delistedSnapshots)}는 여전히 빠져 있어 생존편향이 남아 있습니다.`
-          : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
-        + (a.delistedSkipped > 0 ? ` (data/delisted.csv의 ${a.delistedIncluded + a.delistedSkipped}개 중 ${a.delistedSkipped}개는 시세를 읽지 못해 제외 — \`npm run sync\` 필요)` : "")
-      : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. KRX 과거 시점 파일로 `npm run derive-delisted`를 실행하거나 `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
-  );
-  L.push(`> **해석 시 주의** — ${a.delistedIncluded > 0 ? "생존편향(상장폐지 ETF는 일부만 포함 — 위 항목 참고)" : "생존편향(현재 상장 ETF만 포함)"}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
+  const sv = survivorshipText(a);
+  L.push(sv.bullet);
+  L.push(`> **해석 시 주의** — ${sv.caution}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
     + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
   L.push("");
   for (const profile of a.profiles) {

@@ -41,11 +41,13 @@ describe("universeAsOf", () => {
     expect(universeAsOf([ended], "20240229")).toHaveLength(1);
   });
 
-  it("마지막 거래가 기준일 당일이면 포함(그 날 종가로 평가 가능, 이후 관측은 시세가 이어지는 한 있음)", () => {
+  it("마지막 거래일 당일이 기준일이어도 제외한다(이후 관측이 없어 단일 평가가 불가능하고 바스켓에서는 현금이 되는 불일치를 막는다)", () => {
     const cut = 400;
     const ended: Loaded = { rec, series: { dates: full.dates.slice(0, cut), close: full.close.slice(0, cut), volume: full.volume.slice(0, cut) }, ended: true };
     const lastTrade = ended.series.dates[cut - 1] as string;
-    expect(universeAsOf([ended], lastTrade)).toHaveLength(1);
+    expect(universeAsOf([ended], lastTrade)).toHaveLength(0);
+    // 바로 전 거래일에는 이후 관측이 있으므로 포함
+    expect(universeAsOf([ended], ended.series.dates[cut - 2] as string)).toHaveLength(1);
   });
 
   it("종료 표시가 없는 현재 상장 ETF 는 마지막 거래가 기준일 전이어도 이 규칙으로 제외되지 않는다", () => {

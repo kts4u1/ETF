@@ -110,6 +110,43 @@ export function inferSnapshotDate(
   return { date: best.date, matched: best.matched, compared: common.length };
 }
 
+/** KRX ETF 전종목 시세는 2020년 말에도 390개를 넘었다. 이보다 적으면 전종목 파일이 아니다. */
+export const MIN_KRX_ROWS = 100;
+
+/**
+ * `npm run derive-delisted -- <파일…> [--date YYYYMMDD]` 의 인자 해석. 잘못된 사용은 error 로 돌려준다
+ * (조용히 무시하면 사용자가 지정했다고 믿은 날짜가 적용되지 않은 채 결과가 저장된다).
+ */
+export function parseDeriveArgs(args: string[]): { paths: string[]; date?: string } | { error: string } {
+  const paths: string[] = [];
+  let date: string | undefined;
+  let dateSeen = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i] as string;
+    let value: string | undefined;
+    if (a === "--date") {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("--")) return { error: "--date 뒤에 YYYYMMDD 값이 필요합니다." };
+      value = next;
+      i++;
+    } else if (a.startsWith("--date=")) {
+      value = a.slice("--date=".length);
+    } else if (a.startsWith("--")) {
+      return { error: `알 수 없는 옵션 ${a} 입니다. 사용법: npm run derive-delisted -- <KRX 전종목 시세 CSV…> [--date YYYYMMDD]` };
+    } else {
+      paths.push(a);
+      continue;
+    }
+    if (dateSeen) return { error: "--date 는 한 번만 쓸 수 있습니다." };
+    dateSeen = true;
+    if (!normalizeDate(value)) return { error: `--date '${value}'가 올바른 날짜(YYYYMMDD)가 아닙니다.` };
+    date = value;
+  }
+  if (paths.length === 0) return { error: "KRX 'ETF 전종목 시세' CSV 경로를 하나 이상 지정하세요." };
+  if (date !== undefined && paths.length !== 1) return { error: "--date 는 파일이 1개일 때만 쓸 수 있습니다. 파일마다 날짜가 다르므로 따로 실행하세요." };
+  return { paths, date };
+}
+
 /** 사용자가 지정한 날짜를 검증할 때 요구하는 최소 종가 일치율(추정보다 느슨: 지정한 날짜가 맞다는 단서가 이미 있다). */
 export const GIVEN_DATE_MIN_RATIO = 0.1;
 
@@ -230,6 +267,11 @@ export async function deriveDelisted(
   for (const f of files) {
     const rows = parseKrxEtfCsv(await readFile(f.path));
     const reject = (date: string | null, note: string) => report.files.push({ path: f.path, date, rows: rows.length, verdict: "rejected", note });
+    // 헤더만 있는 파일이나 다른 화면의 파일을 날짜 지정만으로 통과시키지 않는다(전종목 시세는 항상 수백 개)
+    if (rows.length < MIN_KRX_ROWS) {
+      reject(null, `ETF 전종목 시세 파일이 아닌 것 같습니다(읽은 종목 ${rows.length}개 < ${MIN_KRX_ROWS}개). 전종목을 조회해 내려받았는지 확인하세요.`);
+      continue;
+    }
     const given = f.date ? normalizeDate(f.date) : null;
     if (f.date && !given) {
       reject(null, `지정한 날짜 '${f.date}'가 올바른 날짜(YYYYMMDD)가 아닙니다.`);

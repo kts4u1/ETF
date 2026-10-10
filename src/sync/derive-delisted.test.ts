@@ -11,7 +11,9 @@ import {
   inferSnapshotDate,
   looksLikeCurrentList,
   matchAtDate,
+  MIN_KRX_ROWS,
   mergeEntries,
+  parseDeriveArgs,
   parseKrxEtfCsv,
   toDelistedCsv,
   type KrxRow,
@@ -140,6 +142,27 @@ describe("matchAtDate / looksLikeCurrentList", () => {
     const older = [...rows.slice(0, 900), ...Array.from({ length: 21 }, (_, i) => ({ code: String(900000 + i), name: "폐지", close: 1 }))];
     expect(looksLikeCurrentList(older, current)).toBe(false);
     expect(looksLikeCurrentList([], current)).toBe(false);
+  });
+});
+
+describe("parseDeriveArgs", () => {
+  it("파일만, 파일 1개 + --date, --date=값 형태", () => {
+    expect(parseDeriveArgs(["a.csv", "b.csv"])).toEqual({ paths: ["a.csv", "b.csv"], date: undefined });
+    expect(parseDeriveArgs(["a.csv", "--date", "20260410"])).toEqual({ paths: ["a.csv"], date: "20260410" });
+    expect(parseDeriveArgs(["--date=2026-04-10", "a.csv"])).toEqual({ paths: ["a.csv"], date: "2026-04-10" });
+  });
+  it("조용히 무시하면 안 되는 잘못된 사용은 모두 오류", () => {
+    const err = (a: string[]) => ("error" in (parseDeriveArgs(a) as object) ? (parseDeriveArgs(a) as { error: string }).error : null);
+    expect(err([])).toMatch(/경로를 하나 이상/);
+    expect(err(["--date", "20260410"])).toMatch(/경로를 하나 이상/);
+    expect(err(["a.csv", "--date"])).toMatch(/값이 필요/); // 값이 없음
+    expect(err(["a.csv", "--date", "--foo"])).toMatch(/값이 필요/); // 값 자리에 다른 옵션
+    expect(err(["a.csv", "--date", "20260230"])).toMatch(/올바른 날짜/);
+    expect(err(["a.csv", "--date=abc"])).toMatch(/올바른 날짜/);
+    expect(err(["a.csv", "--date", "20260410", "--date", "20260101"])).toMatch(/한 번만/);
+    expect(err(["a.csv", "--date", "20260410", "--date=20260101"])).toMatch(/한 번만/);
+    expect(err(["a.csv", "b.csv", "--date", "20260410"])).toMatch(/파일이 1개일 때만/);
+    expect(err(["a.csv", "--force"])).toMatch(/알 수 없는 옵션/);
   });
 });
 
@@ -294,6 +317,54 @@ describe("deriveDelisted", () => {
     const r = await deriveDelisted([{ path: f }], () => {}, { fetchPrices: fetches() });
     expect(r.candidates).toBe(0);
     expect(JSON.parse(await readFile("data/delisted.meta.json", "utf8"))).toEqual({ snapshots: ["20260410"] });
+  });
+
+  it("행이 너무 적은 파일(헤더만 등)은 --date 를 줘도 거부한다", async () => {
+    const empty = await write("empty.csv", "종목코드,종목명,종가\n");
+    const few = await write("few.csv", csv(nowRowsAt("20260410", MIN_KRX_ROWS - 1)));
+    for (const f of [empty, few]) {
+      const r = await deriveDelisted([{ path: f, date: "20260410" }], () => {}, { fetchPrices: fetches() });
+      expect(r.files[0]).toMatchObject({ verdict: "rejected" });
+      expect(r.files[0]!.note).toContain("전종목 시세 파일이 아닌 것 같습니다");
+    }
+    expect(existsSync("data/delisted.meta.json")).toBe(false);
+    // 경계: 정확히 MIN_KRX_ROWS 개는 통과
+    const ok = await write("ok.csv", csv(nowRowsAt("20260410", MIN_KRX_ROWS)));
+    expect((await deriveDelisted([{ path: ok }], () => {}, { fetchPrices: fetches() })).files[0]!.verdict).toBe("ok");
+  });
+
+  it("--date 로 날짜를 지정한 파일은 그 날짜의 종가가 10% 이상 맞아야 통과한다(경계 포함)", async () => {
+    const rowsMatching = (matching: number) =>
+      nowRowsAt("20260410", 280).map((r, i) => (i < matching ? r : { ...r, close: Math.round(r.close * 1.03) }));
+    const run = async (matching: number) =>
+      (await deriveDelisted([{ path: await write(`m${matching}.csv`, csv([...rowsMatching(matching), ...extras("옛")])), date: "20260410" }], () => {}, { fetchPrices: fetches() })).files[0]!;
+    // 280개 중 28개 = 정확히 10% → 통과(추정 기준 25% 에는 못 미쳐 날짜 지정이 필요한 경우)
+    const accepted = await run(28);
+    expect(accepted.verdict).toBe("ok");
+    expect(accepted.note).toContain("종가 일치 28/");
+    // 27개 = 9.6% → 거부
+    expect((await run(27)).verdict).toBe("rejected");
+  });
+
+  it("이미 저장된 항목이 있는 상태에서 다시 도출하면 바뀐 것만 '갱신'으로 센다", async () => {
+    const f = await write("a.csv", csv([...nowRowsAt("20260410", 280), ...extras("옛")]));
+    await deriveDelisted([{ path: f }], () => {}, { fetchPrices: fetches() });
+    await writeFile("data/delisted.csv", toDelistedCsv([{ code: "0AAAA0", name: "손으로 고친 이름", delistedOn: "20260624" }]));
+    const r = await deriveDelisted([{ path: f }], () => {}, { fetchPrices: fetches() });
+    expect(r).toMatchObject({ added: 0, changed: 1, total: 1 });
+    expect(parseDelistedCsv(await readFile("data/delisted.csv", "utf8"))[0]!.name).toBe("옛A"); // 새로 도출한 값으로 갱신됨(문서화된 동작)
+  });
+
+  it("실행을 나눠도(최근 파일 먼저, 이른 파일 나중) 기준일이 오름차순으로 누적되고 목록은 합쳐진다", async () => {
+    const newer = await write("new.csv", csv([...nowRowsAt("20260410", 280), ...extras("최근")]));
+    const older = await write("old.csv", csv([...nowRowsAt("20260209", 260), { code: "0DDDD0", name: "더 일찍 폐지", close: 5000 }]));
+    const fetchPrices = stubFetch({ "0AAAA0": series("20260624", 120), "0BBBB0": series("20261007", 120), "0CCCC0": series("20260301", 30), "0DDDD0": series("20260515", 70) });
+    await deriveDelisted([{ path: newer }], () => {}, { fetchPrices });
+    expect(JSON.parse(await readFile("data/delisted.meta.json", "utf8"))).toEqual({ snapshots: ["20260410"] });
+    const r = await deriveDelisted([{ path: older }], () => {}, { fetchPrices });
+    expect(JSON.parse(await readFile("data/delisted.meta.json", "utf8"))).toEqual({ snapshots: ["20260209", "20260410"] });
+    expect(parseDelistedCsv(await readFile("data/delisted.csv", "utf8")).map((e) => e.code).sort()).toEqual(["0AAAA0", "0DDDD0"]);
+    expect(r).toMatchObject({ added: 1, total: 2 });
   });
 
   it("다시 실행해도 결과가 같다(멱등) — 신규 0, 갱신 0", async () => {

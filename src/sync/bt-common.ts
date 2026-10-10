@@ -49,9 +49,9 @@ export function universeAsOf(loaded: Loaded[], t: string): AsOfEtf[] {
     if (idx < 1) continue;
     // 기준일이 속한 달에 거래 기록이 있어야 한다(거래정지·상장 전 제외)
     if ((l.series.dates[idx] as string) < `${t.slice(0, 6)}01`) continue;
-    // 이미 시세가 끝난 ETF(상장폐지)가 기준일 직전에 마지막으로 거래된 경우: 기준일에는 살 수 없고 이후 관측도 없어
-    // 단일 평가에서는 조용히 빠지고 바스켓에서는 현금으로 남는 불일치가 생기므로 유니버스에서 뺀다.
-    if (l.ended && idx === l.series.dates.length - 1 && (l.series.dates[idx] as string) < t) continue;
+    // 이미 시세가 끝난 ETF(상장폐지)의 마지막 행에서는 이후 관측이 없어 단일 평가가 불가능한데(null),
+    // 바스켓에서는 현금으로 남는 불일치가 생긴다. 마지막 행(마지막 거래일 당일 포함)은 유니버스에서 뺀다.
+    if (l.ended && idx === l.series.dates.length - 1) continue;
     const m = computeMetrics(l.series, idx);
     if (!m) continue;
     out.push({ e: { ...l.rec, aumEok: 10_000, fee: null, navGap: null, m }, series: l.series, idx, ended: l.ended });
