@@ -6,7 +6,7 @@ import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
 import { HttpError } from "./naver";
 import * as naver from "./naver";
-import { DOMESTIC_SOURCE, buildSeriesFile, composeSnapshot, syncAll } from "./build-snapshot";
+import { DOMESTIC_SOURCE, buildSeriesFile, composeSnapshot, roundChartClose, syncAll } from "./build-snapshot";
 import { NOW, makeDeps, weekdays } from "./us.fixtures";
 import type { UsDeps } from "./us";
 
@@ -115,6 +115,26 @@ describe("buildSeriesFile: 국내·해외 거래일이 달라도 주간 격자�
     expect(f.grid.at(-1)).toBe(us1.dates.at(-1));
     expect(f.s.SPY!.o).toBe(0);
     expect(buildSeriesFile(records, new Map())).toEqual({ version: 1, grid: [], s: {} });
+  });
+});
+
+describe("roundChartClose / series.json 의 종가 정밀도", () => {
+  it("1,000원 이상은 원 단위, 미만은 소수 둘째 자리 — 국내 정수 종가는 그대로", () => {
+    expect(roundChartClose(1_045_611.7265)).toBe(1_045_612);
+    expect(roundChartClose(1000)).toBe(1000);
+    expect(roundChartClose(999.456)).toBe(999.46);
+    expect(roundChartClose(35_000)).toBe(35_000);
+    expect(roundChartClose(512)).toBe(512);
+  });
+
+  it("해외 ETF 의 원화 환산 종가는 정수로 저장되고 국내 값은 바뀌지 않는다", () => {
+    const dates = weekdays(utc(2026, 5, 1), utc(2026, 6, 30));
+    const kr: PriceSeries = { dates, close: dates.map((_, i) => 10_000 + i), volume: dates.map(() => 1) };
+    const us: PriceSeries = { dates, close: dates.map((_, i) => 1_045_611.7265 + i * 0.3333), volume: dates.map(() => 1) };
+    const f = buildSeriesFile([rec("069500", "x"), rec("SPY", "x", "US")], new Map([["069500", kr], ["SPY", us]]));
+    expect(f.s["069500"]!.c.every(Number.isInteger)).toBe(true);
+    expect(f.s.SPY!.c.every(Number.isInteger)).toBe(true);
+    expect(f.s.SPY!.c.at(-1)).toBe(Math.round(us.close.at(-1)!));
   });
 });
 

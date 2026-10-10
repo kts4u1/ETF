@@ -16,8 +16,9 @@ async function main() {
     case "sync": {
       const limit = value("limit");
       const usLimit = value("us-limit");
-      if (usLimit !== undefined && !(Number.isInteger(Number(usLimit)) && Number(usLimit) > 0)) {
-        console.log(`--us-limit 는 1 이상의 정수여야 합니다(입력: ${usLimit}).`);
+      // 값 없이 `--us-limit` 만 쓴 경우도 조용히 무시하지 않고 막는다
+      if ((usLimit !== undefined || flag("us-limit")) && !(Number.isInteger(Number(usLimit)) && Number(usLimit) > 0)) {
+        console.log(`--us-limit 는 1 이상의 정수여야 합니다(입력: ${usLimit ?? "값 없음"}).`);
         process.exitCode = 1;
         break;
       }

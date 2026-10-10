@@ -231,6 +231,12 @@ export function composeSnapshot(args: {
 // ───────── 차트용 주간 시계열 ─────────
 
 /**
+ * 차트용 종가 반올림: 1,000원 이상은 원 단위, 그 아래는 소수 둘째 자리. 국내 종가는 원래 정수라 결과가 이전과 같고,
+ * 달러 수정종가에 환율을 곱한 해외 시세만 소수점 자리를 덜어 series.json 이 불필요하게 커지지 않게 한다(차트에는 영향이 없는 정밀도).
+ */
+export const roundChartClose = (v: number): number => (v >= 1000 ? Math.round(v) : Math.round(v * 100) / 100);
+
+/**
  * 가장 긴 히스토리를 가진 ETF의 거래일에서 5거래일마다 하나씩 뽑아 공통 격자로 쓴다(마지막 거래일 포함).
  * 격자의 기준은 국내 상장 ETF 가 있으면 국내만 본다 — 국내 차트가 해외 시세의 유무나 길이에 따라 달라지지 않게 하려는 것이다.
  * 거래일이 다른 해외 ETF 는 격자 날짜 이하의 마지막 종가를 이어 써서(휴장일에는 직전 종가) 같은 격자에 올린다.
@@ -259,7 +265,7 @@ export function buildSeriesFile(etfs: EtfRecord[], series: Map<string, PriceSeri
       while (p + 1 < s.dates.length && s.dates[p + 1]! <= gd) p++;
       if (s.dates[p]! > gd) continue; // 이 격자 시점에는 아직 상장 전
       if (o < 0) o = g;
-      c.push(Math.round(s.close[p]! * 100) / 100);
+      c.push(roundChartClose(s.close[p]!));
     }
     if (o >= 0) out[e.code] = { o, c };
   }
