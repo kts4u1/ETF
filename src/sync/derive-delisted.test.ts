@@ -74,6 +74,38 @@ describe("inferSnapshotDate", () => {
   it("비교할 종목이 너무 적으면 null", () => {
     expect(inferSnapshotDate(rowsAt(0).slice(0, 5), series)).toBeNull();
   });
+
+  // 오래된 파일: 배당 보정 때문에 대부분 어긋나고 일부(배당을 안 하는 ETF)만 정확히 맞는다 — 실제 파일은 약 14%만 맞았다
+  const codes2 = Array.from({ length: 200 }, (_, i) => String(500000 + i));
+  const series2 = fakeSeries(codes2);
+  const bigRowsAt = (idx: number): KrxRow[] => codes2.map((c) => ({ code: c, name: c, close: (series2.get(c) as SeriesLike).close[idx] as number }));
+  const bigOld = (matching: number, otherIdx = -1, otherCount = 0): KrxRow[] =>
+    bigRowsAt(1).map((r, i) => {
+      if (i < matching) return r;
+      if (otherIdx >= 0 && i < matching + otherCount) return { ...r, close: (series2.get(r.code) as SeriesLike).close[otherIdx] as number };
+      return { ...r, close: r.close * 1.6 };
+    });
+
+  it("일치율이 낮아도(14%) 다른 날짜보다 압도적이면 날짜를 추정한다 — 1~2.5년 전 KRX 파일의 실제 모습", () => {
+    const r = inferSnapshotDate(bigOld(28), series2)!; // 200개 중 28개 = 14%
+    expect(r.date).toBe("20260407");
+    expect(r.matched).toBe(28);
+    expect(r.compared).toBe(200);
+    expect(r.runnerUp).toBeLessThan(28 / 3); // 2위 날짜는 우연히 맞는 몇 개뿐
+  });
+  it("1위가 2위보다 3배 미만이면 날짜를 가릴 수 없어 null(동률 포함)", () => {
+    expect(inferSnapshotDate(bigOld(28, 3, 28), series2)).toBeNull(); // 04-07 에 28개, 04-09 에도 28개
+    expect(inferSnapshotDate(bigOld(30, 3, 11), series2)).toBeNull(); // 30 < 3 × 11
+    expect(inferSnapshotDate(bigOld(30, 3, 10), series2)?.date).toBe("20260407"); // 30 = 3 × 10 은 통과(경계)
+  });
+  it("일치가 15개 미만이거나 비교 종목의 5% 미만이면 null", () => {
+    expect(inferSnapshotDate(bigOld(14), series2)).toBeNull(); // 14 < 15
+    expect(inferSnapshotDate(bigOld(15), series2)?.date).toBe("20260407"); // 15 = 15, 7.5% ≥ 5%
+    const many = Array.from({ length: 400 }, (_, i) => String(600000 + i));
+    const seriesMany = fakeSeries(many);
+    const rows: KrxRow[] = many.map((c, i) => ({ code: c, name: c, close: ((seriesMany.get(c) as SeriesLike).close[1] as number) * (i < 15 ? 1 : 1.6) }));
+    expect(inferSnapshotDate(rows, seriesMany, { sample: 400 })).toBeNull(); // 15/400 = 3.75% < 5%
+  });
 });
 
 describe("classifyCandidate", () => {
@@ -333,17 +365,28 @@ describe("deriveDelisted", () => {
     expect((await deriveDelisted([{ path: ok }], () => {}, { fetchPrices: fetches() })).files[0]!.verdict).toBe("ok");
   });
 
-  it("--date 로 날짜를 지정한 파일은 그 날짜의 종가가 10% 이상 맞아야 통과한다(경계 포함)", async () => {
-    const rowsMatching = (matching: number) =>
-      nowRowsAt("20260410", 280).map((r, i) => (i < matching ? r : { ...r, close: Math.round(r.close * 1.03) }));
-    const run = async (matching: number) =>
-      (await deriveDelisted([{ path: await write(`m${matching}.csv`, csv([...rowsMatching(matching), ...extras("옛")])), date: "20260410" }], () => {}, { fetchPrices: fetches() })).files[0]!;
-    // 280개 중 28개 = 정확히 10% → 통과(추정 기준 25% 에는 못 미쳐 날짜 지정이 필요한 경우)
-    const accepted = await run(28);
+  it("오래된 파일(종가 일치 15%)도 날짜 지정 없이 추정된다", async () => {
+    const rows = nowRowsAt("20260410", 280).map((r, i) => (i < 42 ? r : { ...r, close: Math.round(r.close * 1.6) }));
+    const r = await deriveDelisted([{ path: await write("old15.csv", csv([...rows, ...extras("옛")])) }], () => {}, { fetchPrices: fetches() });
+    expect(r.files[0]).toMatchObject({ verdict: "ok", date: "20260410" });
+    expect(r.files[0]!.note).toMatch(/종가 일치 42\/280\(2위 날짜 \d+\)/);
+  });
+
+  it("추정이 모호할 때(두 날짜가 비슷하게 맞음) --date 로 지정한 날짜는 그 날짜의 종가가 10% 이상 맞아야 통과한다(경계 포함)", async () => {
+    // k개는 04-10 종가, 다른 k개는 04-09 종가, 나머지는 어긋남 → 04-10 과 04-09 가 동률이라 추정은 실패한다
+    const rowsAmbiguous = (k: number) =>
+      nowRowsAt("20260410", 280).map((r, i) => {
+        if (i < k) return r;
+        if (i < 2 * k) return { ...r, close: closeOf(i, dates.indexOf("20260409")) };
+        return { ...r, close: Math.round(r.close * 1.6) };
+      });
+    const run = async (k: number, date?: string) =>
+      (await deriveDelisted([{ path: await write(`m${k}${date ?? ""}.csv`, csv([...rowsAmbiguous(k), ...extras("옛")])), date }], () => {}, { fetchPrices: fetches() })).files[0]!;
+    expect((await run(28)).note).toContain("--date"); // 지정이 없으면 추정 실패
+    const accepted = await run(28, "20260410"); // 280개 중 28개 = 정확히 10%
     expect(accepted.verdict).toBe("ok");
     expect(accepted.note).toContain("종가 일치 28/");
-    // 27개 = 9.6% → 거부
-    expect((await run(27)).verdict).toBe("rejected");
+    expect((await run(27, "20260410")).verdict).toBe("rejected"); // 27개 = 9.6%
   });
 
   it("이미 저장된 항목이 있는 상태에서 다시 도출하면 바뀐 것만 '갱신'으로 센다", async () => {

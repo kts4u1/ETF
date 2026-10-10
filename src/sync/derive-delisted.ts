@@ -81,16 +81,25 @@ export interface SeriesLike {
   close: number[];
 }
 
+/** 날짜 추정이 성립하려면 가장 잘 맞는 날짜의 일치가 최소 이만큼(개수)이어야 한다. */
+export const INFER_MIN_MATCHES = 15;
+/** … 그리고 비교한 종목의 이 비율 이상이어야 한다. */
+export const INFER_MIN_RATIO = 0.05;
+/** … 그리고 2위 날짜보다 이 배수 이상 많아야 한다(날짜를 다른 날과 구별할 수 있어야 한다). */
+export const INFER_MIN_MARGIN = 3;
+
 /**
  * 파일의 종가를 시세 캐시와 맞춰 어느 날짜의 데이터인지 추정한다.
- * 시세는 배당 보정(수정주가)이라 먼 과거일수록 실제 종가와 조금 달라지지만, 배당이 없는 ETF는 정확히 일치하므로
- * "일치 개수가 가장 많은 날짜"는 올바른 날짜를 가리킨다. 일치 비율이 너무 낮으면 null.
+ * 시세는 배당 보정(수정주가)이라 먼 과거일수록 실제 종가와 달라진다: 6개월 전 파일은 약 59%, 1~2.5년 전 파일은
+ * 약 14% 만 일치한다(배당을 안 하는 ETF만 맞는다). 그래서 일치 '비율'이 아니라 일치 '개수가 다른 날짜보다 압도적인지'로 판정한다 —
+ * 올바른 날짜는 2위 날짜보다 5배 안팎으로 많았고, 틀린 날짜는 대개 한 자릿수 %만 우연히 맞는다.
+ * 조건: 일치가 INFER_MIN_MATCHES 개·INFER_MIN_RATIO 비율 이상이고 2위의 INFER_MIN_MARGIN 배 이상. 아니면 null.
  */
 export function inferSnapshotDate(
   rows: KrxRow[],
   series: Map<string, SeriesLike>,
-  opts: { sample?: number; minRatio?: number } = {},
-): { date: string; matched: number; compared: number } | null {
+  opts: { sample?: number } = {},
+): { date: string; matched: number; compared: number; runnerUp: number } | null {
   const common = rows.filter((r) => series.has(r.code)).slice(0, opts.sample ?? 300);
   if (common.length < 20) return null;
   // 날짜 → (코드 → 종가) 조회를 위해 코드별 Map 을 만든다
@@ -98,16 +107,21 @@ export function inferSnapshotDate(
   const refDates = new Set<string>();
   for (const { m } of byCode) for (const d of m.keys()) refDates.add(d);
   let best: { date: string; matched: number } | null = null;
+  let runnerUp = 0;
   for (const d of refDates) {
     let matched = 0;
     for (const { r, m } of byCode) {
       const v = m.get(d);
       if (v !== undefined && Math.abs(v / r.close - 1) < 0.0005) matched++;
     }
-    if (!best || matched > best.matched || (matched === best.matched && d > best.date)) best = { date: d, matched };
+    if (!best || matched > best.matched) {
+      if (best) runnerUp = Math.max(runnerUp, best.matched);
+      best = { date: d, matched };
+    } else runnerUp = Math.max(runnerUp, matched);
   }
-  if (!best || best.matched / common.length < (opts.minRatio ?? 0.25)) return null;
-  return { date: best.date, matched: best.matched, compared: common.length };
+  if (!best) return null;
+  if (best.matched < INFER_MIN_MATCHES || best.matched / common.length < INFER_MIN_RATIO || best.matched < INFER_MIN_MARGIN * runnerUp) return null;
+  return { date: best.date, matched: best.matched, compared: common.length, runnerUp };
 }
 
 /** KRX ETF 전종목 시세는 2020년 말에도 390개를 넘었다. 이보다 적으면 전종목 파일이 아니다. */
@@ -285,7 +299,7 @@ export async function deriveDelisted(
         null,
         comparable < 20
           ? "시세 캐시가 부족해 날짜를 추정하지 못했습니다(먼저 npm run sync). 날짜를 알면 --date 로 지정하세요."
-          : "종가가 시세 캐시와 거의 맞지 않아 날짜를 추정하지 못했습니다(오래된 파일은 배당 보정 때문에 그럴 수 있습니다). 날짜를 알면 --date 로 지정하세요 — 지정한 날짜도 종가가 일부 맞아야 합니다.",
+          : "종가가 시세 캐시와 맞는 날짜를 뚜렷하게 하나로 가리지 못해 날짜를 추정하지 못했습니다(일치가 너무 적거나 2위 날짜와 비슷). 날짜를 알면 --date 로 지정하세요 — 지정한 날짜도 종가가 일부 맞아야 합니다.",
       );
       continue;
     }
@@ -294,7 +308,7 @@ export async function deriveDelisted(
       continue;
     }
     // 지정한 날짜는 종가로 한 번 더 검증한다(추정이 실패했을 때 --date 가 모든 검사를 우회하지 않도록)
-    let verified = inferred ? `종가 일치 ${inferred.matched}/${inferred.compared}` : "";
+    let verified = inferred ? `종가 일치 ${inferred.matched}/${inferred.compared}(2위 날짜 ${inferred.runnerUp})` : "";
     if (given && !inferred) {
       const m = matchAtDate(rows, series, given);
       if (m.compared >= 20) {
