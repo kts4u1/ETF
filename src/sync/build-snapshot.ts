@@ -7,7 +7,7 @@ import { cleanSeries, computeMetrics } from "../core/metrics";
 import type { HoldingRow } from "../core/holdings";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
 import { cleanDescription, fetchDetail, fetchEtfList, fetchHoldings, fetchPrices, type Detail, type ListItem } from "./naver";
-import { buildHoldingsFile } from "./build-holdings";
+import { buildHoldingsData } from "./build-holdings";
 import { cachedJson, readCache, today } from "./cache";
 import { loadDelistedEntries, syncDelisted } from "./delisted";
 import { mapPool } from "./pool";
@@ -176,15 +176,18 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
     for (const f of us.failed) failed.push(`미국 ${f}`);
   }
 
+  // 세 파일을 모두 메모리에서 만든 뒤에 한꺼번에 쓴다. 중간 단계가 실패해도 일부만 새것인 산출물이 남지 않는다.
   const snapshot = composeSnapshot({ domestic: etfs, us, generatedAt: new Date().toISOString() });
   const allSeries = new Map(cleaned);
   if (us) for (const [code, s] of us.series) allSeries.set(code, s);
+  const seriesFile = buildSeriesFile(snapshot.etfs, allSeries);
+  const holdings = opts.skipHoldings ? null : await buildHoldingsData(snapshot, loadCachedHoldings);
   await writeFile(join(OUT_DIR, "snapshot.json"), JSON.stringify(snapshot));
-  await writeFile(join(OUT_DIR, "series.json"), JSON.stringify(buildSeriesFile(snapshot.etfs, allSeries)));
+  await writeFile(join(OUT_DIR, "series.json"), JSON.stringify(seriesFile));
   log(`스냅샷 저장: 국내 ${etfs.length}개${us ? ` + 해외(미국) ${us.etfs.length}개` : ""}, 국내 기준일 ${snapshot.asOf}${snapshot.asOfUs ? `, 해외 기준일 ${snapshot.asOfUs}` : ""}`);
-  if (!opts.skipHoldings) {
-    const { available } = await buildHoldingsFile();
-    log(`구성종목 저장: ${available}개 ETF에서 겹침 계산 가능${holdingsFailed ? ` (수집 실패 ${holdingsFailed}건)` : ""}`);
+  if (holdings) {
+    await writeFile(join(OUT_DIR, "holdings.json"), JSON.stringify(holdings.file));
+    log(`구성종목 저장: ${holdings.available}개 ETF에서 겹침 계산 가능${holdingsFailed ? ` (수집 실패 ${holdingsFailed}건)` : ""}`);
   }
   return { snapshot, failed, usStats: us?.stats };
 }

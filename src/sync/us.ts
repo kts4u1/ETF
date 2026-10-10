@@ -19,7 +19,7 @@ import { cachedJson } from "./cache";
 import { HttpError, withRetry } from "./naver";
 import { mapPool } from "./pool";
 import { round, roundMetrics } from "./rounding";
-import { NotFoundError, YahooClient, type ChartData, type FetchLike, type FundInfo } from "./yahoo";
+import { NotFoundError, YahooClient, ymdFromUnix, type ChartData, type FetchLike, type FundInfo } from "./yahoo";
 
 export const US_CACHE_DIR = ".cache/yahoo";
 export const FX_SYMBOL = "KRW=X";
@@ -153,6 +153,17 @@ export function fxRateOn(fx: FxTable, date: string): number | null {
 export function fxLatest(fx: FxTable): { rate: number; date: string } {
   const i = fx.dates.length - 1;
   return { rate: fx.rate[i] as number, date: fx.dates[i] as string };
+}
+
+/**
+ * 환율표의 최신일이 현재보다 FX_MAX_CARRY_DAYS 일 이상 뒤처졌으면 중단한다. 이월 규칙이 최근 시세 행을 하나씩 버려
+ * 기준일이 조용히 뒤로 밀리거나, 순자산이 낡은 환율로 환산되는 것을 막는다.
+ */
+export function assertFxFresh(latestFxDate: string, nowUnix: number): void {
+  const age = daysBetween(latestFxDate, ymdFromUnix(nowUnix, 0));
+  if (age >= FX_MAX_CARRY_DAYS) {
+    throw new Error(`환율(${FX_SYMBOL})의 최신일 ${latestFxDate} 이(가) 현재보다 ${age}일 앞서 있어 쓸 수 없습니다(허용 ${FX_MAX_CARRY_DAYS - 1}일 이내).`);
+  }
 }
 
 /** 달러 수정종가 × 같은 날짜 환율 = 원화 수정종가. 거래량은 주식 수라 그대로. 환율을 구할 수 없는 날은 뺀다. */
@@ -310,6 +321,8 @@ export interface SyncUsOptions {
   concurrency?: number;
   /** 캐시 폴더(기본 .cache/yahoo) */
   cacheDir?: string;
+  /** 현재 시각(ms). 시세 요청 기간과 환율 신선도 검사의 기준이다. 테스트에서 고정할 때 쓴다 */
+  nowMs?: number;
   log?: (msg: string) => void;
 }
 
@@ -356,7 +369,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   const concurrency = opts.concurrency ?? 6;
   const dir = opts.cacheDir ?? US_CACHE_DIR;
   for (const sub of ["quick", "info", "price"]) await mkdir(join(dir, sub), { recursive: true });
-  const nowUnix = Math.floor(Date.now() / 1000);
+  const nowUnix = Math.floor((opts.nowMs ?? Date.now()) / 1000);
   const failed: string[] = [];
 
   const progress = (label: string) => {
@@ -383,11 +396,17 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
 
   log("환율(원/달러) 수집 중…");
   const fx = await must("환율", async () => {
-    const chart = await cachedJson(join(dir, "fx.json"), force, () => deps.fetchChart(FX_SYMBOL, nowUnix - FX_CALENDAR_DAYS * DAY, nowUnix, { requireAdjClose: false }));
+    // 범위 검사를 통과한 응답만 캐시에 남긴다(이상한 값이 캐시되면 같은 날 다시 실행해도 같은 오류가 반복된다)
+    const chart = await cachedJson(join(dir, "fx.json"), force, async () => {
+      const c = await deps.fetchChart(FX_SYMBOL, nowUnix - FX_CALENDAR_DAYS * DAY, nowUnix, { requireAdjClose: false });
+      buildFxTable(c);
+      return c;
+    });
     return buildFxTable(chart);
   });
   const fxNow = fxLatest(fx);
   log(`  ${fx.dates.length}일, 최신 ${fxNow.date} ${fxNow.rate}원`);
+  await must("환율 신선도", async () => assertFxFresh(fxNow.date, nowUnix));
 
   await must("야후 세션(쿠키·crumb)", async () => deps.openSession?.());
 

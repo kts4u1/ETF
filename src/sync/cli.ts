@@ -67,8 +67,10 @@ async function main() {
     default:
       console.log(
         "사용법:\n  npm run sync [-- --force] [-- --limit N] [-- --concurrency N] [-- --skip-holdings] [-- --skip-us] [-- --us-limit N]\n"
+          + "    --limit N      개발용: 국내 ETF 는 상위 N개만(미국은 이 옵션의 영향을 받지 않으니 --us-limit 이나 --skip-us 로 따로 줄이세요)\n"
           + "    --skip-us      미국 상장 ETF 수집을 건너뛰고 국내만 저장(기존 snapshot.json 의 해외 ETF 는 지워집니다)\n"
-          + "    --us-limit N   개발용: 미국 ETF 는 거래대금 상위 N개만\n"
+          + "    --us-limit N   개발용: 미국 ETF 는 거래대금 상위 N개만 다음 단계로(목록 전체의 1개월 시세는 받습니다)\n"
+          + "    미국 수집이 실패하면 snapshot.json·series.json·holdings.json 을 하나도 쓰지 않고 오류로 끝납니다.\n"
           + "  npm run backtest   (sync 후 .cache 의 시세로 오프라인 실행)\n  npm run derive-delisted -- <KRX 전종목 시세 CSV…>   (상장폐지 ETF 목록 생성)");
       process.exitCode = 1;
   }
