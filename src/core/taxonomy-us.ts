@@ -120,15 +120,18 @@ export function extractUsBrand(name: string): string {
   return MULT_RE.test(first) ? "" : first;
 }
 
+const TRUST_FRAGMENT = /^(?:ETFs? )?(?:Series Trust|Fund Trust|Trust|Series|Funds|Inc\.?)(?: (?:I{1,3}|IV|V))?(?= |$)/i;
+
 /**
- * 신탁 이름·브랜드를 앞에서부터 최대 3번 떼어낸 본문과, 떼어낸 브랜드(소문자·영숫자만).
+ * 신탁 이름·브랜드를 앞에서부터 최대 4번 떼어낸 본문과, 떼어낸 브랜드(소문자·영숫자만).
  * 분류 규칙은 브랜드 낱말("Innovator", "Global X" …)에 걸리지 않게 이 본문에 건다.
  */
 function stripBrands(n: string): { body: string; brand: string } {
   let s = n;
   let brand = "";
-  for (let i = 0; i < 3; i++) {
-    const len = prefixLength(s);
+  for (let i = 0; i < 4; i++) {
+    // "REX ETF Trust REX …" 처럼 브랜드 뒤에 신탁 이름 조각("ETF Trust")이 남는 경우도 함께 뗀다.
+    const len = prefixLength(s) || (TRUST_FRAGMENT.exec(s)?.[0].length ?? 0);
     if (len === 0 || len >= s.length) break;
     brand += s.slice(0, len).toLowerCase().replace(/[^a-z0-9]/g, "");
     s = s.slice(len).replace(/^[\s\-:]+/, "");
@@ -281,7 +284,7 @@ function detectLeverage(n: string, body: string, cat: string | null): number {
     if (/\bUltraPro\b/i.test(body)) mag = 3;
     else if (/\bUltraShort\b/i.test(body) && sign === -1) mag = 2;
     else if (proshares && /\bUltra\b(?![- ]?Short)/i.test(body)) mag = 2;
-    else if (/\bDouble\b/i.test(body)) mag = 2;
+    else if (/\bDouble\b/i.test(body) || /\bLeveraged\b(?!\s+(?:Loan|Finance|Buyout))/i.test(body)) mag = 2;
     else if (/\bTriple\b/i.test(body)) mag = 3;
     else if (sign === -1) mag = 1;
     else if (catLev) mag = 2;
@@ -446,7 +449,7 @@ const COUNTRIES: { re: RegExp; label: string; region: Region }[] = [
 const stripExclusions = (s: string) => s.replace(/\b(?:ex[- ]|excluding |without )(?:the )?(?:U\.S\.A?\.?|United States|[A-Za-z]+)/gi, " ").replace(/\s+/g, " ");
 
 const GLOBAL_WORDS = /Emerging|Frontier|\bEM\b|Global|World|International|\bIntl\b|Developed|EAFE|ACWI|All[- ]Country|Foreign|Kokusai|Worldwide|Asia|Pacific/i;
-const US_WORDS = /\bU\.?S\.?A?\b|United States|America|S&P|Nasdaq|\bDow\b|Russell|Wilshire|Wall Street|Magnificent|Treasur/i;
+const US_WORDS = /\bU\.?S\.?A?\b|United States|America|S&P|Nasdaq|\bDow\b|Russell|Wilshire|Wall Street|Magnificent|Treasur|Select Sector/i;
 
 function detectEquityRegion(body: string, rule: CatRule | null): Region {
   const s = stripExclusions(body);
@@ -477,7 +480,8 @@ const NOT_STOCK = new Set(
     "water solar wind rate rates cyber smart large small mid dow blue green reit fintech crypto bitcoin solana nasdaq qqq spy spx ndx dia iwm vix sox " +
     "xrp sol eth btc doge ada sui avax link dot hbar ltc biotech health energy semis semiconductor semiconductors financial financials " +
     "treasury treasuries gas natural crude brent copper platinum palladium uranium lithium airlines etf s&p index sector " +
-    "russell nifty ai tsy eafe mexico brazil taiwan canada germany israel vietnam europe dow30 mag7 magnificent seven nvidia").split(" "),
+    "russell nifty ai tsy eafe mexico brazil taiwan canada germany israel vietnam europe dow30 mag7 magnificent seven top " +
+    "xbi xle xlf xlk xlv xlp xly xli xlu xlb xlre xop kre kweb fxi ewz ewy ewj ewg ewh eem efa gld slv uso ung tlt ief hyg lqd ibit ethe arkk arkg msos ura gdx gdxj smh soxx").split(" "),
 );
 /** 티커 대신 회사 이름으로 적히는 경우(레버리지·옵션인컴 상품 이름에 자주 나온다) */
 const COMPANY_NAMES = new Set([
@@ -523,7 +527,27 @@ addStockTheme("방산·우주", "ba,boeing,lmt,lockheed,rtx,noc,gd,avav,ktos,rkl
 addStockTheme("원전·에너지", "xom,exxon,cvx,chevron,oklo,smr,nne,ceg,vst,tln,uec,uuuu,ccj,leu,fslr,enph,plug,bloom,nrg,sedg,vrt");
 addStockTheme("소비·미디어", "wmt,walmart,cost,costco,dis,disney,nke,nike,sbux,starbucks,mcd,ko,pep,lulu,cmg,celh,duol,spot,rost,tgt,gme");
 addStockTheme("금속·광업", "nem,newmont,fcx,freeport,aem,wpm,hl,aa,mp,cde,pagm");
-addStockTheme("건설·산업재", "cat,de,ge,hon,aptv");
+addStockTheme("건설·산업재", "cat,de,ge,hon,aptv,tel,aph,etn,aal,dal,ual,luv");
+addStockTheme("AI·빅테크", "baba,bidu,grab,apld,csco,dell,anet,keys,bb,fig,cdns,cien,hpe");
+addStockTheme("소비·미디어", "pdd,jd,meli,djt,dkng,cvna,echo");
+addStockTheme("반도체", "skhy,axti,nvts,aehr,amkr,entg,fn,form,mtsi,glw,onto,coherent,lite");
+addStockTheme("원전·에너지", "gev,eose,be,oklo,nne");
+addStockTheme("금융", "futu,xyz,figr");
+addStockTheme("금속·광업", "vale,usar,crml");
+addStockTheme("2차전지", "qs,alb,sldp");
+addStockTheme("전기차·자동차", "xpev,li,byd");
+addStockTheme("가상자산 관련주", "asst,purr,blsh,btdr,gemi,sbet,bmnr");
+addStockTheme("바이오·헬스케어", "isrg,hims,tem");
+
+/** 미국이 아닌 나라의 기업(ADR·해외 상장)을 기초로 한 상품의 지역. 이 표에 없으면 미국으로 본다. */
+const STOCK_REGION: Record<string, Region> = {};
+const addStockRegion = (region: Region, keys: string) => {
+  for (const k of keys.split(",")) STOCK_REGION[k.trim().toLowerCase()] = region;
+};
+addStockRegion("CN", "baba,pdd,bidu,jd,futu,xpev,nio,li,byd");
+addStockRegion("KR", "sk hynix,samsung,hynix,skhy");
+addStockRegion("EU", "asml,nok");
+addStockRegion("GLOBAL", "tsm,tsmc,vale,meli,grab");
 
 /** 개별 종목 테마 표(감사 스크립트가 표에 없는 기초 종목을 찾는 데 쓴다). */
 export const US_STOCK_THEME: Readonly<Record<string, string>> = STOCK_THEME;
@@ -559,7 +583,7 @@ function detectEquityTheme(
     if (b.re.test(s)) return { theme: b.label, broad: true };
   }
   for (const c of COUNTRIES) if (c.re.test(s) && !GLOBAL_WORDS.test(s)) return { theme: c.label, broad: true };
-  if (opts.definedOutcome && opts.region === "US" && /\bU\.?S\.? Equity\b|Growth-100|Equity Buffer/i.test(body)) {
+  if (opts.definedOutcome && opts.region === "US" && /\bU\.?S\.? Equity\b|Growth-100/i.test(body)) {
     return { theme: /Growth-100/i.test(body) ? "나스닥100" : "S&P500", broad: true };
   }
   if (rule?.theme) return { theme: rule.theme, broad: false };
@@ -759,7 +783,7 @@ export function classifyUs(info: UsEtfInfo): Taxonomy {
     case "multi":
       assetClass = "multi";
       theme = detectMultiTheme(body, rule);
-      region = rule?.region ?? (/Global|International|World/i.test(body) ? "GLOBAL" : "US");
+      region = /Global|International|World/i.test(body) ? "GLOBAL" : rule?.region ?? "US";
       break;
     case "real-asset":
       assetClass = "real-asset";
@@ -769,12 +793,8 @@ export function classifyUs(info: UsEtfInfo): Taxonomy {
     default: {
       assetClass = "global-equity";
       region = ctx.vix ? "US" : detectEquityRegion(body, rule);
-      if (single) {
-        // 한국·대만·유럽 기업의 레버리지 상품은 기초 종목의 나라를 따른다.
-        if (/hynix|samsung/i.test(single)) region = "KR";
-        else if (/^tsm|tsmc$/i.test(single)) region = "GLOBAL";
-        else if (/^asml$/i.test(single)) region = "EU";
-      }
+      // 외국 기업의 레버리지·옵션인컴 상품은 기초 종목의 나라를 따른다.
+      if (single) region = STOCK_REGION[single.toLowerCase()] ?? region;
       if (ctx.vix) break;
       const t = detectEquityTheme(body, rule, { single, definedOutcome, region });
       theme = t.theme;
