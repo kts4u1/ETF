@@ -207,22 +207,35 @@ export function computeMetrics(series: PriceSeries, asOfIndex: number = series.c
 }
 
 /** 기준 인덱스에서 months 개월 뒤(달력) 수익률. 백테스트의 "실현 수익". 아직 그 날짜가 오지 않았으면 null. */
-export function forwardReturnMonths(series: PriceSeries, index: number, months: number): number | null {
-  const { dates, close } = series;
+export interface ForwardOptions {
+  /**
+   * 시계열이 보유 기간 도중에 끝난 ETF(상장폐지·청산)를 어떻게 다룰지.
+   * false(기본): 아직 관측되지 않은 미래로 보고 null — 현재 상장 중인 ETF에 맞다.
+   * true: 마지막 가격에 청산된 것으로 보고 그 가격까지의 결과를 쓴다 — 상장폐지 ETF를 평가에서 조용히 빼면
+   *       생존편향이 생기므로, 이미 종료된 것이 확실한 ETF에는 반드시 true 로 호출해야 한다.
+   */
+  liquidateAtLast?: boolean;
+}
+
+/** 보유 종료 인덱스. 아직 오지 않은 미래면 null, 청산 허용이면 마지막 인덱스. */
+function forwardEnd(series: PriceSeries, index: number, months: number, opts?: ForwardOptions): number | null {
+  const { dates } = series;
   const target = shiftMonths(dates[index] as string, months);
-  if ((dates[dates.length - 1] as string) < target) return null;
-  const j = indexOnOrBefore(dates, target);
-  if (j <= index) return null;
-  return at(close, j) / at(close, index) - 1;
+  const last = dates.length - 1;
+  const j = (dates[last] as string) < target ? (opts?.liquidateAtLast ? last : -1) : indexOnOrBefore(dates, target);
+  return j > index ? j : null;
+}
+
+export function forwardReturnMonths(series: PriceSeries, index: number, months: number, opts?: ForwardOptions): number | null {
+  const j = forwardEnd(series, index, months, opts);
+  return j === null ? null : at(series.close, j) / at(series.close, index) - 1;
 }
 
 /** 기준 인덱스부터 months 개월 보유했을 때 보유기간 중 최대 낙폭(음수 또는 0). 데이터가 모자라면 null. */
-export function forwardMaxDrawdown(series: PriceSeries, index: number, months: number): number | null {
-  const { dates, close } = series;
-  const target = shiftMonths(dates[index] as string, months);
-  if ((dates[dates.length - 1] as string) < target) return null;
-  const j = indexOnOrBefore(dates, target);
-  if (j <= index) return null;
+export function forwardMaxDrawdown(series: PriceSeries, index: number, months: number, opts?: ForwardOptions): number | null {
+  const { close } = series;
+  const j = forwardEnd(series, index, months, opts);
+  if (j === null) return null;
   let peak = at(close, index);
   let worst = 0;
   for (let i = index; i <= j; i++) {
@@ -231,4 +244,13 @@ export function forwardMaxDrawdown(series: PriceSeries, index: number, months: n
     worst = Math.min(worst, c / peak - 1);
   }
   return worst;
+}
+
+/**
+ * 시세가 데이터 기준일보다 한 달 넘게 일찍 끝났다면 이미 종료(상장폐지·청산·장기 거래정지)된 ETF로 본다.
+ * 현재 상장 중인 ETF의 시계열은 항상 기준일 근처까지 이어진다.
+ */
+export function endedEarly(series: PriceSeries, datasetAsOf: string): boolean {
+  const last = series.dates[series.dates.length - 1];
+  return last !== undefined && last < shiftMonths(datasetAsOf, -1);
 }

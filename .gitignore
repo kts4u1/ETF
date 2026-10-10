@@ -3,3 +3,6 @@ dist/
 .cache/
 *.log
 .DS_Store
+
+# 사용자가 직접 받은 상장폐지 ETF 목록(개인 데이터). 형식은 data/README.md
+data/delisted.csv

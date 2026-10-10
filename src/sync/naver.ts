@@ -3,6 +3,7 @@
  * 공식 API가 아니라 비공개 엔드포인트라 형식이 바뀔 수 있다. 응답 형식을 검증해서
  * 바뀌면 조용히 잘못된 데이터를 만들지 않고 명확한 오류로 멈춘다.
  */
+import type { HoldingRow } from "../core/holdings";
 import type { PriceSeries } from "../core/types";
 import type { NaverTab } from "../core/taxonomy";
 
@@ -108,13 +109,44 @@ export async function fetchDetail(code: string): Promise<Detail> {
   };
 }
 
-/** 공백 정리 후 400자 이내, 가능하면 문장 경계에서 자른다. */
+/**
+ * 운용사 설명 정리: 원천 데이터에 섞인 줄바꿈 태그(<br>)를 공백으로 바꾸고, 공백을 정리한 뒤
+ * 400자 이내로, 가능하면 문장 경계에서 자른다. 일반 태그를 모두 지우지 않는 이유는
+ * "<코스피 200 미국채 혼합지수>"처럼 꺾쇠가 지수명의 일부인 경우가 있기 때문이다. 멱등(여러 번 적용해도 같은 결과).
+ */
 export function cleanDescription(text: string, max = 400): string {
-  const t = text.replace(/\s+/g, " ").trim();
+  const t = text.replace(/<br\s*\/?>/gi, " ").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   const cut = t.slice(0, max);
   const lastStop = Math.max(cut.lastIndexOf("다."), cut.lastIndexOf(". "));
   return lastStop > max * 0.5 ? cut.slice(0, lastStop + (cut[lastStop] === "다" ? 2 : 1)) : cut.trimEnd() + "…";
+}
+
+/** 구성종목(PDF). 신규 상장 등으로 아직 공시가 없으면 빈 배열. */
+export async function fetchHoldings(code: string): Promise<HoldingRow[]> {
+  const url = `https://stock.naver.com/api/domestic/detail/${code}/ETFComponent`;
+  let buf: ArrayBuffer;
+  try {
+    buf = await withRetry(() => fetchBuffer(url));
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) return [];
+    throw e;
+  }
+  return parseHoldings(JSON.parse(new TextDecoder("utf-8").decode(buf)));
+}
+
+export function parseHoldings(json: unknown): HoldingRow[] {
+  if (!Array.isArray(json)) throw new Error("구성종목 응답 형식이 예상과 다릅니다(엔드포인트가 바뀌었을 수 있음).");
+  const out: HoldingRow[] = [];
+  for (const r of json as Record<string, unknown>[]) {
+    const weight = Number(r.weight);
+    const name = typeof r.componentName === "string" ? r.componentName.trim() : "";
+    const id = String(r.componentIsinCode ?? r.componentItemCode ?? "");
+    if (!id || !name || !Number.isFinite(weight)) continue;
+    const item = r.componentItemCode;
+    out.push({ id, code: typeof item === "string" && /^[0-9A-Z]{6}$/.test(item) ? item : null, name, weight });
+  }
+  return out;
 }
 
 /** 일별 시세(수정주가 기준). count 거래일치. */

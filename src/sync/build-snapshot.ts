@@ -1,16 +1,20 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { HISTORY_LIMIT_DAYS } from "../core/format";
 import { classify } from "../core/taxonomy";
 import { cleanSeries, computeMetrics } from "../core/metrics";
+import type { HoldingRow } from "../core/holdings";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
-import { fetchDetail, fetchEtfList, fetchPrices, type Detail, type ListItem } from "./naver";
+import { cleanDescription, fetchDetail, fetchEtfList, fetchHoldings, fetchPrices, type Detail, type ListItem } from "./naver";
+import { buildHoldingsFile } from "./build-holdings";
+import { loadDelistedEntries, syncDelisted } from "./delisted";
 import { mapPool } from "./pool";
 
 export const CACHE_DIR = ".cache/naver";
 export const OUT_DIR = "public/data";
 /** 약 8년치. 5년 지표 + 백테스트 학습 구간 확보용. */
-const PRICE_DAYS = 2000;
+const PRICE_DAYS = HISTORY_LIMIT_DAYS;
 /** 차트용 주간 격자 길이(약 5년). */
 const GRID_WEEKS = 260;
 
@@ -20,6 +24,8 @@ interface SyncOptions {
   /** 개발용: 상위 N개만 */
   limit?: number;
   concurrency?: number;
+  /** 구성종목(겹침 분석용) 수집을 건너뛴다 */
+  skipHoldings?: boolean;
   log?: (msg: string) => void;
 }
 
@@ -39,7 +45,8 @@ async function readCache<T>(path: string): Promise<Cached<T> | null> {
   }
 }
 
-async function cached<T>(path: string, force: boolean, load: () => Promise<T>): Promise<T> {
+/** 같은 날 받은 캐시가 있으면 재사용하고, 없으면 load 로 받아 저장한다. */
+export async function cachedJson<T>(path: string, force: boolean, load: () => Promise<T>): Promise<T> {
   if (!force) {
     const c = await readCache<T>(path);
     if (c && c.fetchedOn === today()) return c.data;
@@ -55,6 +62,11 @@ export async function loadCachedPrices(code: string): Promise<PriceSeries | null
   return c ? c.data : null;
 }
 
+export async function loadCachedHoldings(code: string): Promise<HoldingRow[] | null> {
+  const c = await readCache<HoldingRow[]>(join(CACHE_DIR, "holdings", `${code}.json`));
+  return c ? c.data : null;
+}
+
 export async function loadCachedList(): Promise<ListItem[] | null> {
   const c = await readCache<ListItem[]>(join(CACHE_DIR, "list.json"));
   return c ? c.data : null;
@@ -66,6 +78,7 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   const concurrency = opts.concurrency ?? 6;
   await mkdir(join(CACHE_DIR, "price"), { recursive: true });
   await mkdir(join(CACHE_DIR, "detail"), { recursive: true });
+  await mkdir(join(CACHE_DIR, "holdings"), { recursive: true });
   await mkdir(OUT_DIR, { recursive: true });
 
   log("ETF 목록 수집 중…");
@@ -89,7 +102,7 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   const priceRun = await mapPool(
     list,
     concurrency,
-    (it) => cached(join(CACHE_DIR, "price", `${it.code}.json`), force, () => fetchPrices(it.code, PRICE_DAYS)),
+    (it) => cachedJson(join(CACHE_DIR, "price", `${it.code}.json`), force, () => fetchPrices(it.code, PRICE_DAYS)),
     progress("시세"),
   );
 
@@ -97,9 +110,29 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   const detailRun = await mapPool(
     list,
     concurrency,
-    (it) => cached<Detail>(join(CACHE_DIR, "detail", `${it.code}.json`), force, () => fetchDetail(it.code)),
+    (it) => cachedJson<Detail>(join(CACHE_DIR, "detail", `${it.code}.json`), force, () => fetchDetail(it.code)),
     progress("상세"),
   );
+
+  let holdingsFailed = 0;
+  if (!opts.skipHoldings) {
+    log("구성종목(PDF) 수집 중…");
+    const holdingsRun = await mapPool(
+      list,
+      concurrency,
+      (it) => cachedJson(join(CACHE_DIR, "holdings", `${it.code}.json`), force, () => fetchHoldings(it.code)),
+      progress("구성종목"),
+    );
+    holdingsFailed = holdingsRun.errors.size;
+  }
+
+  // 선택: 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF의 시세(백테스트 생존편향 보정용)
+  const delisted = await loadDelistedEntries();
+  if (delisted.length > 0) {
+    log(`상장폐지 ETF ${delisted.length}개(data/delisted.csv) 시세 수집 중…`);
+    const r = await syncDelisted(delisted, PRICE_DAYS, concurrency, log);
+    for (const s of r.skipped.slice(0, 10)) log(`  건너뜀 ${s.code}: ${s.reason}`);
+  }
 
   const failed: string[] = [];
   const etfs: EtfRecord[] = [];
@@ -130,7 +163,8 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
       fee: d?.fee ?? null,
       divYield: d?.divYield ?? null,
       navGap: it.nav && it.nav > 0 ? round((it.price / it.nav - 1) * 100, 2) : null,
-      description: d?.description ?? "",
+      // 캐시에는 정리 이전 버전이 남아 있을 수 있어 한 번 더 정리한다(멱등).
+      description: cleanDescription(d?.description ?? ""),
       tax: classify(it.name, it.tab),
       m: roundMetrics(m),
     });
@@ -147,6 +181,10 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   await writeFile(join(OUT_DIR, "snapshot.json"), JSON.stringify(snapshot));
   await writeFile(join(OUT_DIR, "series.json"), JSON.stringify(buildSeriesFile(etfs, cleaned)));
   log(`스냅샷 저장: ${etfs.length}개 ETF, 기준일 ${asOf}`);
+  if (!opts.skipHoldings) {
+    const { available } = await buildHoldingsFile();
+    log(`구성종목 저장: ${available}개 ETF에서 겹침 계산 가능${holdingsFailed ? ` (수집 실패 ${holdingsFailed}건)` : ""}`);
+  }
   return { snapshot, failed };
 }
 

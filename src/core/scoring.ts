@@ -1,6 +1,7 @@
 import type {
   EtfRecord,
   Exclusion,
+  ExclusionCode,
   FactorKey,
   FactorScores,
   Horizon,
@@ -45,15 +46,17 @@ export const PROFILES: Record<Profile, ProfileConfig> = {
     label: "안정형",
     description: "원금 손실을 최소화하고 싶어요. 낙폭이 작고 꾸준한 ETF를 우선합니다.",
     weights: { ret: 0.1, eff: 0.25, safety: 0.35, trend: 0.05, cost: 0.12, trust: 0.13 },
-    maxVol: 0.18,
+    // 위험 등급(explain.riskGrade)의 3등급 상한(변동성 15%)과 일치
+    maxVol: 0.15,
     maxMdd: 0.25,
   },
   balanced: {
     label: "중립형",
     description: "어느 정도 변동은 감수하고 수익과 안정의 균형을 원해요.",
     weights: { ret: 0.25, eff: 0.25, safety: 0.2, trend: 0.1, cost: 0.1, trust: 0.1 },
-    maxVol: 0.4,
-    maxMdd: 0.5,
+    // 4등급 상한(변동성 30%)과 일치 — "위험 매우 높음(5등급)" 상품은 중립형에 추천하지 않는다
+    maxVol: 0.3,
+    maxMdd: 0.45,
   },
   aggressive: {
     label: "공격형",
@@ -130,25 +133,45 @@ export function isLeveraged(e: EtfRecord): boolean {
 export const volOf = (e: EtfRecord) => e.m.vol3y ?? e.m.vol1y;
 export const mddOf = (e: EtfRecord) => e.m.mdd3y ?? e.m.mdd1y ?? e.m.mddAll;
 
-/** 후보에서 제외해야 하면 사유(사람이 읽는 문장)를, 통과하면 null 을 돌려준다 */
-export function checkEligibility(e: EtfRecord, p: Preferences): string | null {
-  if (p.assetClasses && !p.assetClasses.includes(e.tax.assetClass)) return "선택하지 않은 자산군";
-  if (isLeveraged(e) && !p.includeLeveraged) return "레버리지·인버스 상품 (설정에서 포함 가능)";
-  if (e.tax.tags.includes("covered-call") && !p.includeCoveredCall) return "커버드콜 상품 (설정에서 포함 가능)";
-  if (e.aumEok < p.minAumEok) return `순자산 ${Math.round(e.aumEok).toLocaleString("ko-KR")}억원 — 최소 ${p.minAumEok.toLocaleString("ko-KR")}억원 미만`;
-  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return "일평균 거래대금이 3억원 미만이라 사고팔기 어려움";
-  if (!p.includeYoung && e.m.ret.y1 === null) return "상장 1년 미만이라 성과 검증 부족 (설정에서 포함 가능)";
-  if (p.includeYoung && e.m.ret.m3 === null) return "상장 3개월 미만이라 지표 계산 불가";
-  if (p.maxFee !== null && e.fee !== null && e.fee > p.maxFee) return `총보수 ${e.fee}% — 상한 ${p.maxFee}% 초과`;
+export const EXCLUSION_LABEL: Record<ExclusionCode, string> = {
+  "asset-class": "선택하지 않은 자산군",
+  leveraged: "레버리지·인버스",
+  "covered-call": "커버드콜",
+  "small-aum": "순자산이 작음",
+  "low-liquidity": "거래대금이 적음",
+  "too-young": "상장 3개월 미만",
+  "no-track-record": "상장 1년 미만",
+  "high-fee": "총보수 상한 초과",
+  "risk-limit": "투자 성향 위험 한도 초과",
+};
+
+export interface Ineligible {
+  code: ExclusionCode;
+  reason: string;
+}
+
+/** 후보에서 제외해야 하면 사유(코드 + 사람이 읽는 문장)를, 통과하면 null 을 돌려준다 */
+export function checkEligibility(e: EtfRecord, p: Preferences): Ineligible | null {
+  const no = (code: ExclusionCode, reason: string): Ineligible => ({ code, reason });
+  if (p.assetClasses && !p.assetClasses.includes(e.tax.assetClass)) return no("asset-class", "선택하지 않은 자산군");
+  if (isLeveraged(e) && !p.includeLeveraged) return no("leveraged", "레버리지·인버스 상품 (설정에서 포함 가능)");
+  if (e.tax.tags.includes("covered-call") && !p.includeCoveredCall) return no("covered-call", "커버드콜 상품 (설정에서 포함 가능)");
+  if (e.aumEok < p.minAumEok) {
+    return no("small-aum", `순자산 ${Math.round(e.aumEok).toLocaleString("ko-KR")}억원 — 최소 ${p.minAumEok.toLocaleString("ko-KR")}억원 미만`);
+  }
+  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return no("low-liquidity", "일평균 거래대금이 3억원 미만이라 사고팔기 어려움");
+  if (!p.includeYoung && e.m.ret.y1 === null) return no("no-track-record", "상장 1년 미만이라 성과 검증 부족 (설정에서 포함 가능)");
+  if (p.includeYoung && e.m.ret.m3 === null) return no("too-young", "상장 3개월 미만이라 지표 계산 불가");
+  if (p.maxFee !== null && e.fee !== null && e.fee > p.maxFee) return no("high-fee", `총보수 ${e.fee}% — 상한 ${p.maxFee}% 초과`);
 
   const cfg = PROFILES[p.profile];
   const vol = volOf(e);
   if (cfg.maxVol !== null && vol !== null && vol > cfg.maxVol) {
-    return `변동성 연 ${(vol * 100).toFixed(0)}% — ${cfg.label} 한도(${(cfg.maxVol * 100).toFixed(0)}%) 초과`;
+    return no("risk-limit", `변동성 연 ${(vol * 100).toFixed(0)}% — ${cfg.label} 한도(${(cfg.maxVol * 100).toFixed(0)}%) 초과`);
   }
   const mdd = mddOf(e);
   if (cfg.maxMdd !== null && mdd !== null && -mdd > cfg.maxMdd) {
-    return `최대낙폭 ${(mdd * 100).toFixed(0)}% — ${cfg.label} 한도(-${(cfg.maxMdd * 100).toFixed(0)}%) 초과`;
+    return no("risk-limit", `최대낙폭 ${(mdd * 100).toFixed(0)}% — ${cfg.label} 한도(-${(cfg.maxMdd * 100).toFixed(0)}%) 초과`);
   }
   return null;
 }
@@ -262,8 +285,8 @@ export function rankEtfs(universe: EtfRecord[], prefs: Preferences): Recommendat
   const excluded: Exclusion[] = [];
   const cands: EtfRecord[] = [];
   for (const e of universe) {
-    const reason = checkEligibility(e, prefs);
-    if (reason) excluded.push({ etf: e, reason });
+    const why = checkEligibility(e, prefs);
+    if (why) excluded.push({ etf: e, ...why });
     else cands.push(e);
   }
 

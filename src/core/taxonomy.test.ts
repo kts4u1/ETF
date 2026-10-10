@@ -57,6 +57,12 @@ describe("classify: 구조 태그", () => {
     expect(classify("KODEX 200TR", 1).tags).toContain("total-return");
     expect(classify("KODEX TRF3070", 7).tags).not.toContain("total-return");
   });
+  it("선물 기반 상품에 futures 태그 (롤오버 비용 주의)", () => {
+    expect(classify("KODEX WTI원유선물(H)", 5).tags).toContain("futures");
+    expect(classify("KODEX 골드선물(H)", 5).tags).toContain("futures");
+    expect(classify("ACE KRX금현물", 5).tags).not.toContain("futures"); // 현물은 선물이 아니다
+    expect(classify("TIGER 구리실물", 5).tags).not.toContain("futures");
+  });
   it("집중 투자(단일종목/TOP3) 태그", () => {
     expect(classify("KODEX 삼성전자단일종목레버리지", 3).tags).toContain("concentrated");
     expect(classify("SOL 조선TOP3플러스", 2).tags).toContain("concentrated");

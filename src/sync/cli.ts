@@ -16,6 +16,7 @@ async function main() {
         force: flag("force"),
         limit: limit ? Number(limit) : undefined,
         concurrency: value("concurrency") ? Number(value("concurrency")) : undefined,
+        skipHoldings: flag("skip-holdings"),
         log: (m) => console.log(m),
       });
       if (failed.length) {
@@ -29,7 +30,7 @@ async function main() {
       await backtestToFile();
       break;
     default:
-      console.log("사용법:\n  npm run sync [-- --force] [-- --limit N] [-- --concurrency N]\n  npm run backtest   (sync 후 .cache 의 시세로 오프라인 실행)");
+      console.log("사용법:\n  npm run sync [-- --force] [-- --limit N] [-- --concurrency N] [-- --skip-holdings]\n  npm run backtest   (sync 후 .cache 의 시세로 오프라인 실행)");
       process.exitCode = 1;
   }
 }

@@ -1,4 +1,5 @@
-import { fmtEok, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
+import { feeWonPer10M, fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
+import { roleOf, type Proposal } from "./portfolio";
 import { HORIZONS, PROFILES, isLeveraged, volOf, mddOf } from "./scoring";
 import type { AssetClass, EtfRecord, Preferences, Region, Scored } from "./types";
 
@@ -37,6 +38,7 @@ export const TAG_LABEL: Record<string, string> = {
   "total-return": "TR",
   dividend: "배당",
   concentrated: "집중투자",
+  futures: "선물",
 };
 
 // ───────── 위험 등급 ─────────
@@ -124,6 +126,12 @@ export function cautions(e: EtfRecord): Caution[] {
   if (t.tags.includes("concentrated")) {
     out.push({ level: "warn", text: "소수 종목에 집중되어 개별 기업 악재의 영향이 큽니다." });
   }
+  if (t.tags.includes("futures")) {
+    out.push({
+      level: "warn",
+      text: "선물 기반 상품입니다. 선물은 만기가 올 때마다 다음 월물로 갈아타며(롤오버) 비용이 생길 수 있어, 기초자산(예: 원유·금) 가격이 올라도 ETF 수익률은 그보다 낮을 수 있습니다.",
+    });
+  }
   if (t.tags.includes("synthetic")) {
     out.push({ level: "info", text: "합성(스왑) 구조는 거래 상대방 증권사의 신용위험이 있습니다." });
   }
@@ -192,7 +200,7 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
     reasons.push("200일 이동평균선 위에서 거래되고 12개월 모멘텀이 상위권입니다.");
   }
   if (e.fee !== null && f.cost >= 80) {
-    reasons.push(`총보수 연 ${e.fee}%로 낮습니다(1,000만원당 연 ${Math.round(e.fee * 1000).toLocaleString("ko-KR")}원).`);
+    reasons.push(`총보수 연 ${fmtFee(e.fee)}로 낮습니다(1,000만원당 연 ${feeWonPer10M(e.fee).toLocaleString("ko-KR")}원).`);
   }
   if (f.trust >= 80) {
     reasons.push(`순자산 ${fmtEok(e.aumEok)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
@@ -200,12 +208,55 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
   if (s.groupSize > 1) {
     reasons.unshift(
       s.groupRank === 1
-        ? `같은 지수를 추종하는 ETF ${s.groupSize}개 중 종합 1위입니다.`
-        : `같은 지수를 추종하는 ETF ${s.groupSize}개 중 종합 ${s.groupRank}위입니다.`,
+        ? `같은 지수를 추종하는 후보 ETF ${s.groupSize}개 중 종합 1위입니다.`
+        : `같은 지수를 추종하는 후보 ETF ${s.groupSize}개 중 종합 ${s.groupRank}위입니다.`,
     );
   }
   return {
     headline: `${PROFILES[prefs.profile].label} · ${HORIZONS[prefs.horizon].label} 기준 종합 ${Math.round(s.score)}점`,
     reasons: reasons.slice(0, 5),
   };
+}
+
+// ───────── 조합 설명 ─────────
+
+export interface ProposalExplanation {
+  reasons: string[];
+  cautions: string[];
+}
+
+/** 조합 제안의 근거와 주의사항. 수치는 모두 계산값이고, 미래를 약속하지 않는다. */
+export function explainProposal(p: Proposal, byCode: (code: string) => { name: string } | undefined): ProposalExplanation {
+  const reasons: string[] = [];
+  const cautions: string[] = [];
+  const st = p.stats;
+
+  const roles = new Map<string, number>();
+  for (const m of p.members) roles.set(roleOf(m.cand.etf), (roles.get(roleOf(m.cand.etf)) ?? 0) + m.weight);
+  reasons.push(`역할 분담: ${[...roles].map(([r, w]) => `${r} ${Math.round(w * 100)}%`).join(" · ")}`);
+
+  if (st.diversificationRatio > 1.05) {
+    const cut = 1 - st.vol / st.avgMemberVol;
+    reasons.push(
+      `함께 들면 변동성이 ${fmtRatio(st.vol, 0)}로, 구성 ETF를 따로 든 평균(${fmtRatio(st.avgMemberVol, 0)})보다 약 ${Math.round(cut * 100)}% 낮아집니다(서로 다르게 움직이는 효과).`,
+    );
+  } else {
+    reasons.push("구성 ETF들이 비슷하게 움직여 분산 효과는 크지 않습니다.");
+  }
+  reasons.push(`과거 ${Math.round(st.weeks / 52 * 10) / 10}년 기준 최대낙폭 ${fmtRatio(st.mdd, 0)}, 연 변동성 ${fmtRatio(st.vol, 0)}.`);
+
+  if (p.avgOverlap !== null) {
+    const m = p.maxOverlap;
+    reasons.push(
+      `구성종목 겹침이 평균 ${p.avgOverlap.toFixed(0)}%로 ${p.avgOverlap < 10 ? "거의 없어 실제로 서로 다른 종목에 분산됩니다" : "일부 있습니다"}${m && m.pct >= 10 ? ` (가장 큰 겹침: ${byCode(m.a)?.name ?? m.a} ↔ ${byCode(m.b)?.name ?? m.b} ${m.pct.toFixed(0)}%)` : ""}.`,
+    );
+  } else {
+    cautions.push("일부 ETF는 구성종목 정보가 없어(레버리지·합성 등) 겹침을 확인하지 못했습니다.");
+  }
+
+  cautions.push(
+    `수익률(연 ${fmtRatio(st.cagr, 0)})은 최근 ${Math.round(st.weeks / 52 * 10) / 10}년 과거 값이며 같은 흐름이 반복된다는 보장이 없습니다. 이 조합의 의미는 수익 예측이 아니라 ‘낙폭을 줄이는 분산’입니다.`,
+  );
+  cautions.push("비중을 계속 유지하는 것으로 계산했습니다. 실제로는 시간이 지나며 비중이 변하므로 연 1~2회 점검(리밸런싱)이 필요하고, 거래비용·세금은 반영하지 않았습니다.");
+  return { reasons, cautions };
 }

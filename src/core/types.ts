@@ -26,7 +26,8 @@ export type StructureTag =
   | "active" // 액티브 운용
   | "total-return" // TR (분배금 재투자)
   | "dividend" // 배당 지향
-  | "concentrated"; // 단일종목 또는 소수(TOP1~5) 종목 집중
+  | "concentrated" // 단일종목 또는 소수(TOP1~5) 종목 집중
+  | "futures"; // 선물 기반(만기 교체 비용 발생)
 
 export interface Taxonomy {
   assetClass: AssetClass;
@@ -170,9 +171,22 @@ export interface Scored {
   alternatives: string[];
 }
 
+/** 후보에서 제외된 이유의 종류. UI 에서 사유별로 묶어 보여줄 때 쓴다. */
+export type ExclusionCode =
+  | "asset-class"
+  | "leveraged"
+  | "covered-call"
+  | "small-aum"
+  | "low-liquidity"
+  | "too-young"
+  | "no-track-record"
+  | "high-fee"
+  | "risk-limit";
+
 export interface Exclusion {
   etf: EtfRecord;
-  /** 사람이 읽을 수 있는 제외 사유 */
+  code: ExclusionCode;
+  /** 사람이 읽을 수 있는 제외 사유(수치 포함) */
   reason: string;
 }
 
