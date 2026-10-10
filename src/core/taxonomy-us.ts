@@ -246,9 +246,9 @@ export const isKnownUsCategory = (cat: string | null): boolean => categoryRule(c
 const MULT_RE = /(?<![\w.])(-?)(\d(?:\.\d{1,2})?)\s?[xX](?![a-z])/;
 const INVERSE_WORDS = /\b(?:Inverse|Bear|Bearish)\b|\bUltraPro\s+Short\b|\bUltraShort\b(?!\s+(?:Income|Bond|Duration|Municipal|Fixed|Credit|Maturity|Securities|Investment|Opportunit))/i;
 /** 채권·전략 이름에 흔한 "Short Term", "Short Duration" 은 인버스가 아니다. */
-const SHORT_NOT_INVERSE = "Term|Duration|Maturity|Treasur|Government|Corporate|Muni|Bond|Credit|Income|Investment|TIPS|Dated|Interest";
+const SHORT_NOT_INVERSE = "Term|Duration|Maturity|Treasur|Government|Corporate|Muni|Bond|Credit|Income|Investment|TIPS|Dated|Interest|Fixed|Floating|Core|Aggregate|Securit";
 /** "Short" 단독어. Short-Term·Short Duration·Long/Short 같은 채권·전략 이름은 제외한다. */
-const SHORT_WORD = new RegExp(`(?<![/\\w-])(?<!Long )Short(?![\\w-])(?!\\s+(?:${SHORT_NOT_INVERSE}))`);
+const SHORT_WORD = new RegExp(`(?<![/\\w-])(?<!Long )(?<!Ultra )Short(?![\\w-])(?!\\s+(?:${SHORT_NOT_INVERSE}))`);
 /** 브랜드 바로 뒤에 오는 "Short ProShares Short S&P500" 식 인버스 */
 const STARTS_SHORT = new RegExp(`^Short\\s+(?!(?:${SHORT_NOT_INVERSE}))`);
 const VIX_RE = /\bVIX\b|VIX(?=[A-Z])|Volatility Premium|Volatility Index/i;
@@ -269,18 +269,20 @@ function detectLeverage(n: string, body: string, cat: string | null): number {
   if (VIX_RE.test(body) && !mm) {
     if (proshares && /\bUltra\b/i.test(body)) return 1.5;
     if (proshares && SHORT_WORD.test(body)) return -0.5;
-    return 1;
+    return INVERSE_WORDS.test(body) ? -1 : 1;
   }
 
   let mag: number | null = mm ? Number(mm[2]) : null;
   let sign = mm && mm[1] === "-" ? -1 : 1;
-  if (INVERSE_WORDS.test(body) || (mm !== null && SHORT_WORD.test(body)) || STARTS_SHORT.test(body) || (catInv && mag === null)) {
+  if (INVERSE_WORDS.test(body) || SHORT_WORD.test(body) || STARTS_SHORT.test(body) || (catInv && mag === null)) {
     sign = -1;
   }
   if (mag === null) {
     if (/\bUltraPro\b/i.test(body)) mag = 3;
     else if (/\bUltraShort\b/i.test(body) && sign === -1) mag = 2;
     else if (proshares && /\bUltra\b(?![- ]?Short)/i.test(body)) mag = 2;
+    else if (/\bDouble\b/i.test(body)) mag = 2;
+    else if (/\bTriple\b/i.test(body)) mag = 3;
     else if (sign === -1) mag = 1;
     else if (catLev) mag = 2;
   }
@@ -302,12 +304,12 @@ const CONCENTRATED_RE = /Concentrated|ADRhedged|\bTop\s?[1-5]\b(?!\d)/i;
 const CRYPTO_COIN = /\b(?:Bitcoin|Ether(?:eum)?|Solana|XRP|Ripple|Dogecoin|Litecoin|Cardano|Avalanche|Chainlink|Polkadot|Sui|Hyperliquid|Hedera|Stellar|Cryptocurrency|Crypto)\b/i;
 /** 가상자산 이름이 들어 있어도 기업 주식이면 가상자산 관련주다. */
 const CRYPTO_EQUITY = /Miners?|Mining|Equity|Stocks?|Compan(?:y|ies)|Corporations?|Industry|Economy|Blockchain|Standard|Operators|Innovators/i;
-const TBILL_RE = /T-?Bills?\b|Treasury Bills?\b|\b[0-3]-[1-3] Months?\b|\b(?:3|6|12) Months?\b|Six Month|Money Market|Ultra[- ]Short|Floating Rate Treasury|Cash Management/i;
+const TBILL_RE = /T-?Bills?\b|Treasury Bills?\b|\b[0-3]-[1-3] Months?\b|\b(?:3|6|12) Months?\b|Six Month|Money Market|Ultra[- ]Short|Ultra-?short (?:Income|Bond|Fixed|Duration|Government|Treasury)|Floating Rate Treasury|Cash Management/i;
 const MUNI_RE = /Muni(?:cipal)?s?\b|Tax[- ]Exempt|Tax[- ]Aware|AMT-Free/i;
 const BOND_NAME_RE =
-  /\bBonds?\b|Treasur(?:y|ies)|\bTIPS\b|Fixed[- ]Income|Muni(?:cipal)?s?\b|Aggregate|Credit\b|High[- ]Yield\b(?!.*(?:Equity|Dividend))|\bDebt\b|\bNotes?\b|Floating[- ]Rate|Mortgage(?! REIT)|\bMBS\b|\bCLO\b|iBonds|BulletShares|Convertible|Income Securities|Strategic Income|Core Plus/i;
+  /\bBonds?\b|Treasur(?:y|ies)|\bTIPS\b|Fixed[- ]Income|Muni(?:cipal)?s?\b|Aggregate|Credit\b|High[- ]Yield\b(?!.*(?:Equity|Dividend))|\bDebt\b|\bNotes?\b|Floating[- ]Rate|Mortgage(?! REIT)|\bMBS\b|\bCLO\b|iBonds|BulletShares|Convertible|Income Securities|Strategic Income|Core Plus|Senior Loan|Bank Loan|Sukuk|Tax-Exempt|Inflation-(?:Protected|Linked)|\b(?:Short|Low|Limited|Intermediate|Target|Defined) Duration\b|Short[- ]Term (?:Income|Tax|Corporate|Government|Municipal|Fixed)|Multi-?Sector Income/i;
 const COMMODITY_NAME_RE =
-  /\bGold\b|\bSilver\b|\bPlatinum\b|\bPalladium\b|\bOil\b|Crude|Brent|Natural Gas|Gasoline|\bCopper\b|Commodit(?:y|ies)|\bWheat\b|\bCorn\b|\bSugar\b|\bCoffee\b|\bCocoa\b|Agricultur|Bullion|Precious Metals?|Industrial Metals?|Base Metals?|Carbon (?:Allowances|Credit)/i;
+  /\bGold\b|\bSilver\b|\bPlatinum\b|\bPalladium\b|\bOil\b|Crude|\bBrent\b|Natural Gas|Gasoline|\bCopper\b|Commodit(?:y|ies)|\bWheat\b|\bCorn\b|\bSugar\b|\bCoffee\b|\bCocoa\b|Agricultur|Bullion|Precious Metals?|Industrial Metals?|Base Metals?|Carbon (?:Allowances|Credit)/i;
 const COMMODITY_EQUITY_RE =
   /Miners?|Mining|Equity|Stocks?|Compan(?:y|ies)|Explor|Production|Producers?|Equipment|Services|Midstream|Pipeline|Refin|Royalty|Streaming|Strategic Metals|Enhanced Income|Infrastructure|Select Sector/i;
 const FX_NAME_RE = /CurrencyShares|Currency (?:Trust|Strategy)|Dollar Index|US Dollar|\bYen\b|\bYuan\b|Swiss Franc|British Pound|Canadian Dollar|Australian Dollar|Dollar (?:Bullish|Bearish)|\bEuro$/i;
@@ -348,10 +350,10 @@ function detectClass(cat: string | null, body: string): ClassCtx {
   if (cryptoEquity) return out("equity");
   if (FX_NAME_RE.test(body)) return out("fx");
   // "Factor Allocation" 처럼 주식 펀드의 이름에도 Allocation 이 쓰인다.
-  if (MULTI_NAME_RE.test(body) && !/Equity|Stock/i.test(body)) return out("multi");
+  if (MULTI_NAME_RE.test(body) && !/Equity|Stock|Muni|Bond|Fixed Income/i.test(body)) return out("multi");
   if (COMMODITY_NAME_RE.test(body) && !COMMODITY_EQUITY_RE.test(body) && !BOND_NAME_RE.test(body)) return out("commodity");
   if (TBILL_RE.test(body) && !MUNI_RE.test(body)) return out("cash");
-  if (BOND_NAME_RE.test(body) && !/Equity|Stock/i.test(body)) return out("bond");
+  if (BOND_NAME_RE.test(body) && !/Equity|Stock|Preferred/i.test(body)) return out("bond");
   if (REAL_ASSET_NAME_RE.test(body) && !/Equity|Stock/i.test(body)) return out("real-asset");
   return out("equity");
 }
@@ -388,7 +390,7 @@ const BROAD_INDEXES: { label: string; re: RegExp; us?: boolean }[] = [
   { label: "S&P500", re: /S&P ?500|\bSP ?500\b|S&P US 500/i, us: true },
   { label: "다우존스", re: /Dow Jones Industrial|Dow ?30|\bDJIA\b/i, us: true },
   { label: "미국 소형주", re: /Small[- ]?Cap|Russell 2000|S&P 600|Micro[- ]?Cap/i, us: true },
-  { label: "미국 중형주", re: /Mid[- ]?Cap|Russell Midcap|S&P 400|\bSMID\b/i, us: true },
+  { label: "미국 중형주", re: /Mid[- ]?Cap|Russell Midcap|Russell 2500|S&P 400|\bSMID\b/i, us: true },
   { label: "미국 전체시장", re: /Total (?:Stock )?Market|Total U\.?S\.? |Broad Market|Russell 3000|Wilshire 5000|All[- ]?Cap|U\.?S\.? (?:Equity|Stock)(?: Market)? Index/i, us: true },
   { label: "미국 대형주", re: /Large[- ]?Cap|Russell 1000|S&P 100\b|Mega[- ]?Cap|MSCI USA\b/i, us: true },
   { label: "선진국(MSCI World)", re: /MSCI World|World Index|ACWI|All[- ]Country|FTSE All-World|Total World|Kokusai|Global Equity Market/i },
@@ -490,7 +492,11 @@ const COMPANY_NAMES = new Set([
  * 기초가 개별 종목인 상품에서 기초 종목(티커나 회사명)을 뽑는다. 확실하지 않으면 null — 섹터·지수 펀드를
  * 단일 종목으로 잘못 보면 "소수 종목 집중" 경고가 거짓이 되므로 보수적으로 판단한다.
  */
-export function singleStockUnderlying(body: string): string | null {
+export function singleStockUnderlying(name: string): string | null {
+  return underlyingOfBody(stripBrands(clean(name)).body);
+}
+
+function underlyingOfBody(body: string): string | null {
   if (!SINGLE_CONTEXT.test(body)) return null;
   const core = body.replace(SINGLE_WRAP_WORDS, " ").replace(/[()-]+/g, " ").replace(/\s+/g, " ").trim();
   if (!core) return null;
@@ -588,7 +594,7 @@ function detectCommodityTheme(s: string): string {
   if (/Rare Earth/i.test(s)) return "희토류";
   if (/\bCopper\b/i.test(s)) return "구리";
   if (/Natural Gas/i.test(s)) return "천연가스";
-  if (/\bOil\b|Crude|Brent|WTI|Gasoline|Heating Oil|Petroleum/i.test(s)) return "원유";
+  if (/\bOil\b|Crude|\bBrent\b|WTI|Gasoline|Heating Oil|Petroleum/i.test(s)) return "원유";
   if (/Agricultur|\bCorn\b|Wheat|Soybean|Sugar|Coffee|Cocoa|Cotton|Livestock|Cattle|Grains?\b|Softs/i.test(s)) return "농산물";
   if (/Industrial Metals?|Base Metals?|Aluminum|\bZinc\b|\bNickel\b|Battery Metals?/i.test(s)) return "산업금속";
   if (/Carbon/i.test(s)) return "탄소배출권";
@@ -643,7 +649,7 @@ const INDEX_EVIDENCE =
   /S&P|MSCI|Russell|Nasdaq|\bDow\b|FTSE|CRSP|Bloomberg|Barclays|iBoxx|\bICE\b|Morningstar|Solactive|NYSE|Wilshire|KBW|STOXX|Nikkei|\bCSI\b|Hang Seng|Nifty|Alerian|Cboe|\bVIX\b|\bQQQ\b|\bDJIA\b/i;
 /** 자산 자체(금·비트코인·국채 …)를 가리키는 단서. 그 자산의 기업 주식(광산 등)에는 적용하지 않는다. */
 const ASSET_EVIDENCE =
-  /Treasur(?:y|ies)|\bTIPS\b|\bGold\b|\bSilver\b|Platinum|Palladium|Bitcoin|Ether(?:eum)?|Solana|XRP|Crude|Brent|Natural Gas|Copper/i;
+  /\d[- ]?(?:\+ )?(?:Year|Month|Yr)s?\b.*Treasur(?:y|ies)|Treasur(?:y|ies).*\d[- ]?(?:\+ )?(?:Year|Month)|\bGold\b|\bSilver\b|Platinum|Palladium|Bitcoin|Ether(?:eum)?|Solana|XRP|Crude|\bBrent\b|Natural Gas|Copper/i;
 const ASSET_EQUITY_WORDS = /Miners?|Mining|Explor|Producers?|Royalt|Streaming|Equity|Stocks?|Compan(?:y|ies)/i;
 /** 상품 일반어. 이름의 이 낱말들은 같은 지수 판별에 쓸모가 없어 groupKey 에서 뺀다. */
 const GENERIC_WORDS = /\b(?:etfs?|funds?|trust|shares?|core|portfolio|index|series|exchange[- ]traded|class|common|beneficial|interests?|units?|the|inc|lp|physical|minishares|vehicle|etv)\b/gi;
@@ -669,8 +675,12 @@ function canonicalIndex(s: string): string {
  * 레버리지 배수·인버스·커버드콜·버퍼·선물처럼 구조가 다르면 이름이 같아도 다른 상품이라 꼬리표로 구분한다.
  */
 function groupKeyOf(n: string, symbol: string, tags: StructureTag[], leverage: number, single: string | null): string {
+  // 버퍼·목표수익 상품은 기간(월)·상한(cap)이 상품마다 다르고, 이름이 잘리면 그 기간이 사라져 서로 다른 상품이 같은 키가 된다.
+  // 같은 지수가 아니라 상품마다 결과가 달라지는 구조이므로 묶지 않는다.
+  if (tags.includes("defined-outcome")) return `us:${symbol.toLowerCase()}`;
   const stripped = stripBrands(n);
-  let body = stripped.body;
+  // 'Common Shares of Beneficial Interest' 같은 법적 꼬리말은 상품을 가르지 않는다(잘린 이름의 "of B" 도 함께 사라진다).
+  let body = stripped.body.replace(/\s+Common Shares?\b.*$/i, "");
   // "Tidal ETF Trust - Sound Equity Income ETF" 처럼 신탁 이름이 " - " 앞에 붙은 형태는 뒷부분이 상품명이다.
   const dash = body.indexOf(" - ");
   if (dash > 0 && /(?:Trust|Funds?|Series|Shares)$/i.test(body.slice(0, dash))) body = body.slice(dash + 3);
@@ -701,10 +711,10 @@ export function classifyUs(info: UsEtfInfo): Taxonomy {
 
   const leverage = detectLeverage(n, body, cat);
   const ctx = detectClass(cat, body);
-  const single = ctx.cls === "equity" ? singleStockUnderlying(body) : null;
+  const single = ctx.cls === "equity" ? underlyingOfBody(body) : null;
   const definedOutcome = cat === "Defined Outcome" || DEFINED_OUTCOME_RE.test(n);
   const coveredCall =
-    cat !== "Defined Outcome" &&
+    !definedOutcome &&
     (cat === "Derivative Income" || COVERED_CALL_RE.test(n) || (OPTION_INCOME_BRAND.test(n) && /Enhanced Income|High Income/i.test(body)));
 
   // 자산군 · 지역 · 테마
