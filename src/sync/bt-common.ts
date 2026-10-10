@@ -83,6 +83,28 @@ export function median(xs: number[]): number {
   const m = s.length >> 1;
   return s.length % 2 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
 }
+/**
+ * 양측 95% Student t 임계값(자유도 df). 겹치지 않는 표본은 2~11개뿐이라 정규분포의 1.96 을 쓰면
+ * 구간이 크게 좁아져(표본 3개면 2.2배, 2개면 6.5배) 우연한 '유의'가 생긴다. df>30 은 구간별 보수적 근사.
+ */
+const T95 = [
+  NaN, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
+  2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042,
+];
+export function tCritical95(df: number): number {
+  if (!(df >= 1)) return NaN;
+  if (df <= 30) return T95[Math.floor(df)] as number;
+  if (df <= 40) return 2.042; // df 30 의 값(보수적)
+  if (df <= 60) return 2.021;
+  if (df <= 120) return 2.0;
+  return 1.98;
+}
+
+/** 표본 평균의 95% 신뢰구간 반폭(t 분포). 표본이 2개 미만이면 NaN. */
+export function ci95(xs: number[]): number {
+  return xs.length > 1 ? tCritical95(xs.length - 1) * stderr(xs) : NaN;
+}
+
 export function stderr(xs: number[]): number {
   if (xs.length < 2) return NaN;
   const m = mean(xs);

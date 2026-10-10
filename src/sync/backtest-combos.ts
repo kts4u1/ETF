@@ -13,7 +13,7 @@ import { indexOnOrBefore, shiftMonths } from "../core/metrics";
 import { proposeCombos, selectPool, weeklyReturns, MAX_WEEKS, type ComboCandidate, type Weighting } from "../core/portfolio";
 import { DEFAULT_PREFS, PROFILES, rankEtfs } from "../core/scoring";
 import type { PriceSeries, Profile } from "../core/types";
-import { mean, quantile, stderr, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
+import { ci95, mean, quantile, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
 
 const MONTHS = [3, 6, 12] as const;
 const MIN_REPS = 30;
@@ -160,9 +160,9 @@ export function runComboBacktest(
           mdd: mean(outs.map((o) => o.mdd)),
           p10: quantile(outs.map((o) => o.ret), 0.1),
           dRet: mean(dR),
-          dRetCI: indepR.length > 1 ? 1.96 * stderr(indepR) : NaN,
+          dRetCI: ci95(indepR),
           dMdd: mean(dM),
-          dMddCI: indepM.length > 1 ? 1.96 * stderr(indepM) : NaN,
+          dMddCI: ci95(indepM),
           mddWin: dM.filter((x) => x > 1e-9).length / dM.length, // mdd 는 음수: 클수록(0에 가까울수록) 낙폭이 작음
         };
       }

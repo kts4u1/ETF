@@ -6,13 +6,15 @@ import { Disclaimer } from "../components/bits";
 import { useApp, useBacktest, type BacktestSummary, type ComboCell } from "../data";
 
 const signedPp = (v: number, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%p`;
+/** 겹치지 않는 표본의 95% 구간이 0을 벗어나는가. 구간을 계산할 수 없으면(표본 2개 미만) 유의하다고 보지 않는다. */
+const isSig = (c: { indepMean: number; indepCI: number | null }) => c.indepCI !== null && Number.isFinite(c.indepCI) && c.indepMean - c.indepCI > 0;
 
 /** 백테스트 요약에서 직접 계산한 해석 문장. 데이터가 갱신되어도 문장이 사실과 어긋나지 않는다. */
 function Reading({ bt }: { bt: BacktestSummary }) {
   const cells = Object.values(bt.profiles).flatMap((byH) => Object.values(byH));
   const total = cells.length;
   const beat = cells.filter((c) => c.excess > 0).length;
-  const sig = cells.filter((c) => c.indepMean - c.indepCI > 0).length;
+  const sig = cells.filter(isSig).length;
   const naiveHigher = cells.filter((c) => c.naiveTop > c.top).length;
   const naiveWorseDd = cells.filter((c) => c.naiveMdd < c.topMdd).length;
   return (
@@ -152,13 +154,13 @@ export function Method() {
                 {(["stable", "balanced", "aggressive"] as Profile[]).map((p) => {
                   const c = bt.profiles[p]?.[m];
                   if (!c) return null;
-                  const sig = c.indepMean - c.indepCI > 0;
+                  const sig = isSig(c);
                   return (
                     <tr key={p}>
                       <th scope="row">{PROFILES[p].label}</th>
                       <td className="num">{fmtRatio(c.top)}</td>
                       <td className="num">{fmtRatio(c.cand)}</td>
-                      <td className="num">{signedPp(c.indepMean)} ± {(c.indepCI * 100).toFixed(1)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
+                      <td className="num">{signedPp(c.indepMean)} ± {c.indepCI === null ? "–" : (c.indepCI * 100).toFixed(1)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
                       <td className="num">{fmtRatio(c.naiveTop)}</td>
                       <td className="num">{fmtRatio(c.topMdd, 0)} / {fmtRatio(c.naiveMdd, 0)}</td>
                       <td className="num">{c.ic === null ? "-" : c.ic.toFixed(2)}{c.icCI !== null && <small className="muted"> ±{c.icCI.toFixed(2)}</small>}</td>

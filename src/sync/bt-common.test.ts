@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EtfRecord, PriceSeries } from "../core/types";
-import { universeAsOf, type Loaded } from "./bt-common";
+import { ci95, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
 
 /** 2023-01-02 부터 평일마다 하나씩, 완만하게 오르는 시세 */
 function make(n: number): PriceSeries {
@@ -53,5 +53,30 @@ describe("universeAsOf", () => {
   it("종료 표시가 없는 현재 상장 ETF 는 마지막 거래가 기준일 전이어도 이 규칙으로 제외되지 않는다", () => {
     const loaded: Loaded[] = [{ rec, series: full, ended: false }];
     expect(universeAsOf(loaded, `${lastDate.slice(0, 6)}31`)).toHaveLength(1);
+  });
+});
+
+describe("tCritical95 / ci95: 겹치지 않는 표본(2~11개)의 95% 신뢰구간", () => {
+  it("교과서 t 임계값(양측 95%)과 일치", () => {
+    const table: [number, number][] = [[1, 12.706], [2, 4.303], [3, 3.182], [4, 2.776], [5, 2.571], [10, 2.228], [20, 2.086], [30, 2.042]];
+    for (const [df, t] of table) expect(tCritical95(df), `df=${df}`).toBeCloseTo(t, 3);
+  });
+  it("자유도가 커질수록 줄어들어 1.96 에 수렴하고, 잘못된 자유도는 NaN", () => {
+    for (let df = 1; df < 200; df++) expect(tCritical95(df + 1)).toBeLessThanOrEqual(tCritical95(df));
+    expect(tCritical95(1000)).toBeLessThan(1.99);
+    expect(tCritical95(1000)).toBeGreaterThanOrEqual(1.96);
+    expect(tCritical95(0)).toBeNaN();
+    expect(tCritical95(-3)).toBeNaN();
+  });
+  it("표본이 작을수록 정규분포 1.96 보다 훨씬 넓다: 3개면 2.2배, 2개면 6.5배(작은 표본에서 '유의'가 쉽게 생기던 문제)", () => {
+    const three = [3.6, 3.7, 3.9];
+    expect(ci95(three) / (1.96 * stderr(three))).toBeCloseTo(4.303 / 1.96, 6);
+    const two = [3.6, 3.9];
+    expect(ci95(two) / (1.96 * stderr(two))).toBeCloseTo(12.706 / 1.96, 6);
+  });
+  it("표본이 2개 미만이면 NaN", () => {
+    expect(ci95([])).toBeNaN();
+    expect(ci95([1])).toBeNaN();
+    expect(Number.isFinite(ci95([1, 2]))).toBe(true);
   });
 });

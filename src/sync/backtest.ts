@@ -17,7 +17,7 @@ import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/me
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
 import { runComboBacktest } from "./backtest-combos";
-import { loadUniverse, mean, median, monthEnds, stderr, universeAsOf } from "./bt-common";
+import { ci95, loadUniverse, mean, median, monthEnds, universeAsOf } from "./bt-common";
 import { loadDelistedMeta } from "./derive-delisted";
 
 const FWD_MONTHS = [3, 6, 12] as const;
@@ -184,7 +184,7 @@ function buildSummary(
         naiveTop: naive.top,
         naiveMdd: naive.topMdd,
         ic: ic.length ? mean(ic) : null,
-        icCI: icIndep.length > 1 ? 1.96 * stderr(icIndep) : null,
+        icCI: Number.isFinite(ci95(icIndep)) ? ci95(icIndep) : null,
       };
     }
   }
@@ -214,7 +214,7 @@ function summarize(rows: Row[], m: number) {
     win: excess.length ? excess.filter((x) => x > 0).length / excess.length : NaN,
     indepN: indep.length,
     indepMean: indep.length ? mean(indep) : NaN,
-    indepCI: indep.length > 1 ? 1.96 * stderr(indep) : NaN,
+    indepCI: ci95(indep),
   };
 }
 
@@ -264,7 +264,7 @@ function renderReport(a: {
   const sv = survivorshipText(a);
   L.push(sv.bullet);
   L.push(`> **해석 시 주의** — ${sv.caution}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
-    + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
+    + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간(표본이 2~22개뿐이라 t 분포 사용)이 0을 포함하면 우연과 구분되지 않습니다.");
   L.push("");
   for (const profile of a.profiles) {
     L.push(`## ${PROFILES[profile].label} (${profile})`);
@@ -292,7 +292,7 @@ function renderReport(a: {
         const xs = a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [];
         if (!xs.length) return "-";
         const indep = xs.filter((_, i) => i % m === 0);
-        const ci = indep.length > 1 ? 1.96 * stderr(indep) : NaN;
+        const ci = ci95(indep);
         return `${mean(xs).toFixed(3)}${Number.isFinite(ci) ? ` ±${ci.toFixed(3)}` : ""}`;
       });
       L.push(`| ${k === "total" ? "**종합점수**" : k} | ${cells.join(" | ")} |`);

@@ -36,7 +36,8 @@ export interface BacktestCell {
   win: number;
   indepN: number;
   indepMean: number;
-  indepCI: number;
+  /** 비중첩 표본이 2개 미만이면 null(JSON 직렬화 시 NaN → null) */
+  indepCI: number | null;
   topMdd: number;
   candMdd: number;
   naiveTop: number;
