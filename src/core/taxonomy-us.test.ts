@@ -249,6 +249,21 @@ describe("classifyUs: 구조 태그 규칙", () => {
     }
   });
 
+  it("실제 수집에서 처음 보인 카테고리: 시장중립·차익거래는 대체전략(혼합자산), 프라임 머니마켓은 현금성", () => {
+    for (const [sym, name, cat] of [
+      ["XBOX", "Roundhill Box Spread ETF", "Equity Market Neutral"],
+      ["CBOX", "Calamos Tax-Aware Collateral ETF", "Relative Value Arbitrage"],
+    ] as const) {
+      const t = classifyUs(info(sym, name, cat));
+      expect(t.assetClass, sym).toBe("multi");
+      expect(t.theme, sym).toBe("대체전략");
+      expect(isKnownUsCategory(cat), cat).toBe(true);
+    }
+    const mm = classifyUs(info("PMMF", "iShares Prime Money Market ETF", "Prime Money Market"));
+    expect(mm.assetClass).toBe("cash");
+    expect(isKnownUsCategory("Prime Money Market")).toBe(true);
+  });
+
   it("꼬리위험(Tail Risk) 상품은 카테고리가 인버스여도 -1배가 아니다", () => {
     const t = classifyUs(info("TAIL", "Cambria Tail Risk ETF", "Trading--Inverse Equity"));
     expect(t.leverage).toBe(1);

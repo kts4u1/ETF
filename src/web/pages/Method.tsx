@@ -96,6 +96,10 @@ function OverseasKey({ usCount, krCount }: { usCount: number; krCount: number })
         <li>
           <b>해외 ETF의 생존편향은 보정하지 못했습니다.</b> 이미 상장폐지되어 사라진 해외 ETF는 목록에 없어, 지금 살아남은 ETF만 보고 과거 성과를 평가하게 됩니다. 그래서 해외 ETF의 과거 수익은 실제보다 좋아 보일 수 있습니다.
         </li>
+        <li>
+          <b>선택 편향도 있습니다.</b> {usCollectionRule()} 순자산은 성과가 좋아 돈이 몰린 ETF일수록 큰 경향이 있어, 해외 ETF 목록에는 과거 성과가 좋았던 종목이 더 많이 남아 있습니다.
+          같은 점수여도 국내 ETF보다 해외 ETF가 과거에 더 좋았던 쪽으로 기울어 있을 수 있으니, 두 시장의 점수를 그대로 견주지 마세요.
+        </li>
       </ul>
     </aside>
   );

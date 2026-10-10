@@ -171,7 +171,7 @@ const CATEGORY_RULES: CatRule[] = [
   { re: /^(?:Single Currency|Multi-?currency)$/i, cls: "fx" },
   // 현금성
   { re: /^Ultrashort Bond$/, cls: "cash", region: "US" },
-  { re: /^Money Market/, cls: "cash", region: "US" },
+  { re: /^(?:Prime )?Money Market/, cls: "cash", region: "US" },
   // 채권
   { re: /^Bank Loan$/, cls: "bond", region: "US", theme: "뱅크론" },
   { re: /^Corporate Bond$/, cls: "bond", region: "US", theme: "회사채" },
@@ -195,7 +195,7 @@ const CATEGORY_RULES: CatRule[] = [
   { re: /^(?:Aggressive|Moderately Aggressive|Moderate|Moderately Conservative|Conservative) Allocation$/, cls: "multi", region: "US", theme: "주식+채권 혼합" },
   { re: /^Tactical Allocation$|^Miscellaneous Allocation$|^Multi-Asset Overlay$|^Allocation--/, cls: "multi", region: "US", theme: "자산배분" },
   { re: /^(?:Systematic Trend|Macro Trading|Multistrategy|Event Driven|Multialternative|Managed Futures)$/, cls: "multi", region: "GLOBAL", theme: "대체전략" },
-  { re: /^(?:Long-Short Equity|Market Neutral|Options Trading)$/, cls: "multi", region: "US", theme: "대체전략" },
+  { re: /^(?:Long-Short Equity|Market Neutral|Equity Market Neutral|Relative Value Arbitrage|Options Trading)$/, cls: "multi", region: "US", theme: "대체전략" },
   // 리츠·인프라
   { re: /^Real Estate$/, cls: "real-asset", region: "US", theme: "리츠" },
   { re: /^Global Real Estate$/, cls: "real-asset", region: "GLOBAL", theme: "리츠" },
