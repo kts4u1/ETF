@@ -86,7 +86,7 @@ describe("inferSnapshotDate", () => {
       return { ...r, close: r.close * 1.6 };
     });
 
-  it("일치율이 낮아도(14%) 다른 날짜보다 압도적이면 날짜를 추정한다 — 1~2.5년 전 KRX 파일의 실제 모습", () => {
+  it("일치율이 낮아도(14%) 다른 날짜보다 압도적이면 날짜를 추정한다 — 1.5~3.5년 전 KRX 파일의 실제 모습", () => {
     const r = inferSnapshotDate(bigOld(28), series2)!; // 200개 중 28개 = 14%
     expect(r.date).toBe("20260407");
     expect(r.matched).toBe(28);
@@ -97,6 +97,21 @@ describe("inferSnapshotDate", () => {
     expect(inferSnapshotDate(bigOld(28, 3, 28), series2)).toBeNull(); // 04-07 에 28개, 04-09 에도 28개
     expect(inferSnapshotDate(bigOld(30, 3, 11), series2)).toBeNull(); // 30 < 3 × 11
     expect(inferSnapshotDate(bigOld(30, 3, 10), series2)?.date).toBe("20260407"); // 30 = 3 × 10 은 통과(경계)
+  });
+  it("2위 날짜가 1위보다 '앞선' 날짜일 때도 2위 일치 수를 센다(순회 중 1위가 바뀌는 경로)", () => {
+    // 04-06 에 10개, 04-07 에 30개: 04-06 이 먼저 순회되며 잠시 1위였다가 04-07 에 추월당한다
+    const rows = bigOld(10, 0, 0).map((r, i) => (i < 10 ? { ...r, close: (series2.get(r.code) as SeriesLike).close[0] as number } : i < 40 ? { ...r, close: (series2.get(r.code) as SeriesLike).close[1] as number } : r));
+    expect(inferSnapshotDate(rows, series2)).toMatchObject({ date: "20260407", matched: 30, runnerUp: 10 }); // 30 = 3 × 10 은 통과
+    const rows11 = bigOld(11, 0, 0).map((r, i) => (i < 11 ? { ...r, close: (series2.get(r.code) as SeriesLike).close[0] as number } : i < 41 ? { ...r, close: (series2.get(r.code) as SeriesLike).close[1] as number } : r));
+    expect(inferSnapshotDate(rows11, series2)).toBeNull(); // 30 < 3 × 11
+  });
+  it("앞쪽 N개가 아니라 모든 행을 비교한다(파일은 종목명순이라 앞쪽은 특정 운용사만 담는다)", () => {
+    // 앞 300개는 어떤 날짜와도 안 맞고, 뒤쪽 100개만 04-07 에 맞는 파일
+    const codes3 = Array.from({ length: 400 }, (_, i) => String(700000 + i));
+    const series3 = fakeSeries(codes3);
+    const rows: KrxRow[] = codes3.map((c, i) => ({ code: c, name: c, close: ((series3.get(c) as SeriesLike).close[1] as number) * (i < 300 ? 1.6 : 1) }));
+    expect(inferSnapshotDate(rows, series3)).toMatchObject({ date: "20260407", matched: 100, compared: 400 });
+    expect(matchAtDate(rows, series3, "20260407")).toEqual({ matched: 100, compared: 400 });
   });
   it("일치가 15개 미만이거나 비교 종목의 5% 미만이면 null", () => {
     expect(inferSnapshotDate(bigOld(14), series2)).toBeNull(); // 14 < 15

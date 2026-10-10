@@ -90,9 +90,10 @@ export const INFER_MIN_MARGIN = 3;
 
 /**
  * 파일의 종가를 시세 캐시와 맞춰 어느 날짜의 데이터인지 추정한다.
- * 시세는 배당 보정(수정주가)이라 먼 과거일수록 실제 종가와 달라진다: 6개월 전 파일은 약 59%, 1~2.5년 전 파일은
- * 약 14% 만 일치한다(배당을 안 하는 ETF만 맞는다). 그래서 일치 '비율'이 아니라 일치 '개수가 다른 날짜보다 압도적인지'로 판정한다 —
- * 올바른 날짜는 2위 날짜보다 5배 안팎으로 많았고, 틀린 날짜는 대개 한 자릿수 %만 우연히 맞는다.
+ * 시세는 배당 보정(수정주가)이라 먼 과거일수록 실제 종가와 달라진다: 실제 파일에서 6개월 전은 약 59%, 1년 전 약 28%,
+ * 1.5~3.5년 전은 약 14% 만 일치했다(배당을 안 하는 ETF만 맞는다). 그래서 일치 '비율'이 아니라 일치 '개수가 다른 날짜보다
+ * 압도적인지'로 판정한다 — 올바른 날짜는 2위 날짜보다 3배 이상(실제 3.8~13배) 많았고, 틀린 날짜는 대개 몇 개만 우연히 맞는다.
+ * KRX 파일은 종목명순이라 앞 N개만 쓰면 특정 운용사만 비교하게 되므로 비교 가능한 모든 행을 쓴다.
  * 조건: 일치가 INFER_MIN_MATCHES 개·INFER_MIN_RATIO 비율 이상이고 2위의 INFER_MIN_MARGIN 배 이상. 아니면 null.
  */
 export function inferSnapshotDate(
@@ -100,7 +101,7 @@ export function inferSnapshotDate(
   series: Map<string, SeriesLike>,
   opts: { sample?: number } = {},
 ): { date: string; matched: number; compared: number; runnerUp: number } | null {
-  const common = rows.filter((r) => series.has(r.code)).slice(0, opts.sample ?? 300);
+  const common = rows.filter((r) => series.has(r.code)).slice(0, opts.sample ?? Infinity);
   if (common.length < 20) return null;
   // 날짜 → (코드 → 종가) 조회를 위해 코드별 Map 을 만든다
   const byCode = common.map((r) => ({ r, m: new Map((series.get(r.code) as SeriesLike).dates.map((d, i) => [d, (series.get(r.code) as SeriesLike).close[i] as number])) }));
@@ -165,7 +166,7 @@ export function parseDeriveArgs(args: string[]): { paths: string[]; date?: strin
 export const GIVEN_DATE_MIN_RATIO = 0.1;
 
 /** 특정 날짜의 시세와 파일 종가가 얼마나 맞는지. 비교 가능한 종목이 부족하면 compared < 20. */
-export function matchAtDate(rows: KrxRow[], series: Map<string, SeriesLike>, date: string, sample = 300): { matched: number; compared: number } {
+export function matchAtDate(rows: KrxRow[], series: Map<string, SeriesLike>, date: string, sample = Infinity): { matched: number; compared: number } {
   const common = rows.filter((r) => series.has(r.code)).slice(0, sample);
   let matched = 0;
   for (const r of common) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EtfRecord, PriceSeries } from "../core/types";
-import { ci95, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
+import { assertUniverseUsable, ci95, mean, phaseCI, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
 
 /** 2023-01-02 부터 평일마다 하나씩, 완만하게 오르는 시세 */
 function make(n: number): PriceSeries {
@@ -56,10 +56,15 @@ describe("universeAsOf", () => {
   });
 });
 
-describe("tCritical95 / ci95: 겹치지 않는 표본(2~11개)의 95% 신뢰구간", () => {
+describe("tCritical95 / ci95: 겹치지 않는 표본(2~22개)의 95% 신뢰구간", () => {
   it("교과서 t 임계값(양측 95%)과 일치", () => {
     const table: [number, number][] = [[1, 12.706], [2, 4.303], [3, 3.182], [4, 2.776], [5, 2.571], [10, 2.228], [20, 2.086], [30, 2.042]];
     for (const [df, t] of table) expect(tCritical95(df), `df=${df}`).toBeCloseTo(t, 3);
+  });
+  it("df 1~30 표 전체가 교과서 값과 같다(표를 실수로 고치지 못하게)", () => {
+    const ref = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086, 2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042];
+    ref.forEach((t, i) => expect(tCritical95(i + 1), `df=${i + 1}`).toBeCloseTo(t, 3));
+    expect([tCritical95(31), tCritical95(41), tCritical95(61), tCritical95(121)]).toEqual([2.042, 2.021, 2, 1.98]); // 구간별 보수적 근사
   });
   it("자유도가 커질수록 줄어들어 1.96 에 수렴하고, 잘못된 자유도는 NaN", () => {
     for (let df = 1; df < 200; df++) expect(tCritical95(df + 1)).toBeLessThanOrEqual(tCritical95(df));
@@ -78,5 +83,56 @@ describe("tCritical95 / ci95: 겹치지 않는 표본(2~11개)의 95% 신뢰구�
     expect(ci95([])).toBeNaN();
     expect(ci95([1])).toBeNaN();
     expect(Number.isFinite(ci95([1, 2]))).toBe(true);
+  });
+});
+
+describe("phaseCI: 시작 위상 m가지를 모두 평균한 비중첩 표본의 평균·95% 구간", () => {
+  const xs = [0.02, -0.01, 0.03, 0.05, 0.0, 0.04, -0.02, 0.06, 0.01, 0.03, 0.02, -0.03]; // 12개월
+  it("m=3: 위상 3개의 평균과 구간 반폭을 각각 평균한다(손으로 계산한 값과 일치)", () => {
+    const subs = [0, 1, 2].map((p) => xs.filter((_, i) => i % 3 === p));
+    const r = phaseCI(xs, 3);
+    expect(r.n).toBe(4);
+    expect(r.mean).toBeCloseTo(mean(subs.map((x) => mean(x))), 12);
+    expect(r.ci).toBeCloseTo(mean(subs.map((x) => ci95(x))), 12);
+    expect(r.mean).toBeCloseTo(mean(xs), 12); // 위상별 크기가 같으면 전체 평균과 같다
+  });
+  it("위상별 표본 수가 다르면(10개월, m=3 → 4·3·3개) 평균은 위상 평균이지 전체 평균이 아니다", () => {
+    const ys = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1];
+    const subs = [0, 1, 2].map((p) => ys.filter((_, i) => i % 3 === p));
+    const r = phaseCI(ys, 3);
+    expect(r.mean).toBeCloseTo(mean(subs.map((x) => mean(x))), 12);
+    expect(r.mean).not.toBeCloseTo(mean(ys), 6);
+    expect(r.n).toBe(3);
+  });
+  it("첫 달부터만 뽑는 방식(위상 0 하나)과 달라질 수 있다 — 그 의존성을 없애는 것이 목적", () => {
+    const phase0 = xs.filter((_, i) => i % 3 === 0);
+    expect(phaseCI(xs, 3).ci).not.toBeCloseTo(ci95(phase0), 6);
+  });
+  it("위상별 표본이 2개 미만이면 그 위상은 건너뛴다(예: 23개월, m=12 → 위상 11 만 1개)", () => {
+    const long = Array.from({ length: 23 }, (_, i) => (i % 5) / 100);
+    const r = phaseCI(long, 12);
+    expect(r.n).toBe(2); // 쓴 위상 11개의 크기가 모두 2
+    const used = Array.from({ length: 11 }, (_, p) => long.filter((_, i) => i % 12 === p)); // 크기 2 인 위상 11개 (위상 11 은 크기 1 로 제외)
+    expect(r.ci).toBeCloseTo(mean(used.map((x) => ci95(x))), 12);
+    expect(r.ci).toBeGreaterThan(10 * 0.001); // t(1)=12.7 이라 구간이 매우 넓다
+  });
+  it("쓸 수 있는 위상이 없으면 구간은 NaN, 평균은 전체 평균", () => {
+    const r = phaseCI([0.01, 0.03, 0.05], 12);
+    expect(r.ci).toBeNaN();
+    expect(r.mean).toBeCloseTo(0.03, 12);
+    expect(phaseCI([], 3).mean).toBeNaN();
+  });
+});
+
+describe("assertUniverseUsable: 시세 캐시가 비었을 때 커밋된 결과를 덮어쓰지 않는다", () => {
+  it("현재 상장 ETF의 절반 미만만 읽었으면 중단", () => {
+    expect(() => assertUniverseUsable(0, 1172)).toThrow(/npm run sync/);
+    expect(() => assertUniverseUsable(585, 1172)).toThrow(/585/);
+  });
+  it("절반 이상이면 통과, 부분 실행 허용 옵션이면 항상 통과, 스냅샷이 비었으면 통과", () => {
+    expect(() => assertUniverseUsable(586, 1172)).not.toThrow();
+    expect(() => assertUniverseUsable(1172, 1172)).not.toThrow();
+    expect(() => assertUniverseUsable(0, 1172, true)).not.toThrow();
+    expect(() => assertUniverseUsable(0, 0)).not.toThrow();
   });
 });

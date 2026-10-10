@@ -4,11 +4,9 @@ import { EXCLUSION_LABEL, FACTOR_KEYS, FACTOR_LABELS, HORIZONS, MIN_AVG_VALUE, P
 import type { Profile } from "../../core/types";
 import { Disclaimer } from "../components/bits";
 import { useApp, useBacktest, type BacktestSummary, type ComboCell } from "../data";
+import { fmtCI, isSig, isSigDrop, isSigRet } from "../significance";
 
 const signedPp = (v: number, d = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%p`;
-/** 겹치지 않는 표본의 95% 구간이 0을 벗어나는가. 구간을 계산할 수 없으면(표본 2개 미만) 유의하다고 보지 않는다. */
-const isSig = (c: { indepMean: number; indepCI: number | null }) => c.indepCI !== null && Number.isFinite(c.indepCI) && c.indepMean - c.indepCI > 0;
-
 /** 백테스트 요약에서 직접 계산한 해석 문장. 데이터가 갱신되어도 문장이 사실과 어긋나지 않는다. */
 function Reading({ bt }: { bt: BacktestSummary }) {
   const cells = Object.values(bt.profiles).flatMap((byH) => Object.values(byH));
@@ -62,8 +60,8 @@ function ComboReading({ bt }: { bt: BacktestSummary }) {
   if (!cells.length) return null;
   const total = cells.length;
   const lowerMdd = cells.filter((c) => c.dMdd > 0).length;
-  const sigMdd = cells.filter((c) => c.dMddCI !== null && c.dMdd - c.dMddCI > 0).length;
-  const sigRet = cells.filter((c) => c.dRetCI !== null && Math.abs(c.dRet) - c.dRetCI > 0).length;
+  const sigMdd = cells.filter(isSigDrop).length;
+  const sigRet = cells.filter(isSigRet).length;
   const mddGain = cells.map((c) => c.dMdd * 100);
   return (
     <div className="notice">
@@ -160,7 +158,7 @@ export function Method() {
                       <th scope="row">{PROFILES[p].label}</th>
                       <td className="num">{fmtRatio(c.top)}</td>
                       <td className="num">{fmtRatio(c.cand)}</td>
-                      <td className="num">{signedPp(c.indepMean)} ± {c.indepCI === null ? "–" : (c.indepCI * 100).toFixed(1)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
+                      <td className="num">{signedPp(c.indepMean)} ± {fmtCI(c.indepCI)} <small className="muted">(n={c.indepN}){sig ? "" : " · 0 포함"}</small></td>
                       <td className="num">{fmtRatio(c.naiveTop)}</td>
                       <td className="num">{fmtRatio(c.topMdd, 0)} / {fmtRatio(c.naiveMdd, 0)}</td>
                       <td className="num">{c.ic === null ? "-" : c.ic.toFixed(2)}{c.icCI !== null && <small className="muted"> ±{c.icCI.toFixed(2)}</small>}</td>
@@ -171,6 +169,7 @@ export function Method() {
             </table>
           </div>
         ) : <div className="chart-loading">불러오는 중…</div>}
+        {bt && <p className="hint">‘비중첩’은 보유 기간 간격(3·6·12개월)의 달만 뽑아 서로 겹치지 않게 한 표본입니다. 어느 달부터 뽑느냐에 따라 결과가 달라지므로 시작 달을 가능한 모든 경우로 계산해 평균했고, 표본이 2~22개뿐이라 구간은 t 분포로 계산했습니다(n 은 시작 달 하나당 표본 수).</p>}
         {bt && <Reading bt={bt} />}
       </section>
 
@@ -198,8 +197,8 @@ export function Method() {
                         <td className="num">{fmtRatio(c.ret)}</td>
                         <td className="num">{fmtRatio(c.mdd)}</td>
                         <td className="num">{fmtRatio(c.p10)}</td>
-                        <td className="num">{base ? "-" : `${signedPp(c.dMdd)} ± ${((c.dMddCI ?? 0) * 100).toFixed(1)}`}</td>
-                        <td className="num">{base ? "-" : `${signedPp(c.dRet)} ± ${((c.dRetCI ?? 0) * 100).toFixed(1)}`}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dMdd)} ± ${fmtCI(c.dMddCI)}`}</td>
+                        <td className="num">{base ? "-" : `${signedPp(c.dRet)} ± ${fmtCI(c.dRetCI)}`}</td>
                       </tr>
                     );
                   }),

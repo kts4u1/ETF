@@ -17,7 +17,7 @@ import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/me
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
 import { runComboBacktest } from "./backtest-combos";
-import { ci95, loadUniverse, mean, median, monthEnds, universeAsOf } from "./bt-common";
+import { loadUniverse, mean, median, monthEnds, phaseCI, universeAsOf } from "./bt-common";
 import { loadDelistedMeta } from "./derive-delisted";
 
 const FWD_MONTHS = [3, 6, 12] as const;
@@ -144,8 +144,10 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
       comboMonths: combo.nMonths,
     }),
   );
+  const nIndep = profiles.flatMap((p) => FWD_MONTHS.map((m) => summarize(results.get(`${p}|${MODEL}`) ?? [], m).indepN));
+  const indepRange = `${Math.min(...nIndep)}~${Math.max(...nIndep)}`;
   return (
-    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSkipped: delistedSkipped.length, delistedSnapshots }) +
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSkipped: delistedSkipped.length, delistedSnapshots, indepRange }) +
     combo.markdown
   );
 }
@@ -169,7 +171,7 @@ function buildSummary(
       const model = summarize(results.get(`${profile}|${MODEL}`) ?? [], m);
       const naive = summarize(results.get(`${profile}|${NAIVE}`) ?? [], m);
       const ic = icAcc.get(`${profile}|total`)?.get(m) ?? [];
-      const icIndep = ic.filter((_, i) => i % m === 0);
+      const icCI = phaseCI(ic, m).ci;
       out[profile]![`m${m}`] = {
         n: model.n,
         top: model.top,
@@ -184,7 +186,7 @@ function buildSummary(
         naiveTop: naive.top,
         naiveMdd: naive.topMdd,
         ic: ic.length ? mean(ic) : null,
-        icCI: Number.isFinite(ci95(icIndep)) ? ci95(icIndep) : null,
+        icCI: Number.isFinite(icCI) ? icCI : null,
       };
     }
   }
@@ -196,14 +198,13 @@ function buildSummary(
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(d)}%p`;
 
-function summarize(rows: Row[], m: number) {
+export function summarize(rows: Row[], m: number) {
   const valid = rows.filter((r) => r.fwd[m]);
   const excess = valid.map((r) => r.fwd[m]!.top - r.fwd[m]!.candMedian);
   const tops = valid.map((r) => r.fwd[m]!.top);
   const cands = valid.map((r) => r.fwd[m]!.candMedian);
-  // 겹치지 않는 표본: m개월 간격
-  const step = m;
-  const indep = excess.filter((_, i) => i % step === 0);
+  // 겹치지 않는 표본: m개월 간격으로 뽑되, 시작 위상 m가지를 모두 평균한다(phaseCI)
+  const indep = phaseCI(excess, m);
   return {
     n: valid.length,
     topMdd: valid.length ? mean(valid.map((r) => r.fwd[m]!.topMdd)) : NaN,
@@ -212,9 +213,9 @@ function summarize(rows: Row[], m: number) {
     cand: cands.length ? mean(cands) : NaN,
     excess: excess.length ? mean(excess) : NaN,
     win: excess.length ? excess.filter((x) => x > 0).length / excess.length : NaN,
-    indepN: indep.length,
-    indepMean: indep.length ? mean(indep) : NaN,
-    indepCI: ci95(indep),
+    indepN: indep.n,
+    indepMean: indep.mean,
+    indepCI: indep.ci,
   };
 }
 
@@ -253,6 +254,8 @@ function renderReport(a: {
   /** data/delisted.csv 에는 있지만 시세를 읽지 못해 빠진 개수 */
   delistedSkipped: number;
   delistedSnapshots: string[];
+  /** 모델 칸들의 겹치지 않는 표본 수 범위(예: "2~22") */
+  indepRange: string;
 }): string {
   const L: string[] = [];
   L.push("# 백테스트 리포트 (워크포워드)");
@@ -264,7 +267,7 @@ function renderReport(a: {
   const sv = survivorshipText(a);
   L.push(sv.bullet);
   L.push(`> **해석 시 주의** — ${sv.caution}, 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. `
-    + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간(표본이 2~22개뿐이라 t 분포 사용)이 0을 포함하면 우연과 구분되지 않습니다.");
+    + `'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본(m개월 간격, 시작 월 m가지를 모두 평균)의 95% 신뢰구간(표본이 ${a.indepRange}개뿐이라 t 분포 사용)이 0을 포함하면 우연과 구분되지 않습니다.`);
   L.push("");
   for (const profile of a.profiles) {
     L.push(`## ${PROFILES[profile].label} (${profile})`);
@@ -291,8 +294,7 @@ function renderReport(a: {
       const cells = FWD_MONTHS.map((m) => {
         const xs = a.icAcc.get(`${profile}|${k}`)?.get(m) ?? [];
         if (!xs.length) return "-";
-        const indep = xs.filter((_, i) => i % m === 0);
-        const ci = ci95(indep);
+        const ci = phaseCI(xs, m).ci;
         return `${mean(xs).toFixed(3)}${Number.isFinite(ci) ? ` ±${ci.toFixed(3)}` : ""}`;
       });
       L.push(`| ${k === "total" ? "**종합점수**" : k} | ${cells.join(" | ")} |`);

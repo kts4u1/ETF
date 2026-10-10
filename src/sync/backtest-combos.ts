@@ -13,7 +13,7 @@ import { indexOnOrBefore, shiftMonths } from "../core/metrics";
 import { proposeCombos, selectPool, weeklyReturns, MAX_WEEKS, type ComboCandidate, type Weighting } from "../core/portfolio";
 import { DEFAULT_PREFS, PROFILES, rankEtfs } from "../core/scoring";
 import type { PriceSeries, Profile } from "../core/types";
-import { ci95, mean, quantile, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
+import { mean, phaseCI, quantile, universeAsOf, weeklyClosesAsOf, type AsOfEtf, type Loaded } from "./bt-common";
 
 const MONTHS = [3, 6, 12] as const;
 const MIN_REPS = 30;
@@ -55,6 +55,23 @@ export function forwardBasket(members: Member[], t: string, months: number): { r
   return { ret: value - 1, mdd };
 }
 
+/** 한 전략의 한 칸(성향 × 보유기간) 집계: 기준 전략과의 차이와 비중첩 표본의 95% 구간(시작 위상 평균, t 분포). */
+export function comboCell(outs: Outcome[], base: Map<string, Outcome>, m: number): ComboStrategyResult {
+  const dR = outs.map((o) => o.ret - (base.get(o.t) as Outcome).ret);
+  const dM = outs.map((o) => o.mdd - (base.get(o.t) as Outcome).mdd);
+  return {
+    n: outs.length,
+    ret: mean(outs.map((o) => o.ret)),
+    mdd: mean(outs.map((o) => o.mdd)),
+    p10: quantile(outs.map((o) => o.ret), 0.1),
+    dRet: mean(dR),
+    dRetCI: phaseCI(dR, m).ci,
+    dMdd: mean(dM),
+    dMddCI: phaseCI(dM, m).ci,
+    mddWin: dM.filter((x) => x > 1e-9).length / dM.length, // mdd 는 음수: 클수록(0에 가까울수록) 낙폭이 작음
+  };
+}
+
 export interface ComboStrategyResult {
   n: number;
   ret: number;
@@ -74,7 +91,7 @@ export type ComboSummary = Record<string, Record<string, Record<string, ComboStr
 
 const BASELINE = "추천 상위 3개 균등";
 
-interface Outcome {
+export interface Outcome {
   t: string;
   ret: number;
   mdd: number;
@@ -150,21 +167,7 @@ export function runComboBacktest(
       for (const s of strategies) {
         const outs = (acc.get(`${profile}|${m}|${s}`) ?? []).filter((o) => base.has(o.t));
         if (outs.length < 5) continue;
-        const dR = outs.map((o) => o.ret - (base.get(o.t) as Outcome).ret);
-        const dM = outs.map((o) => o.mdd - (base.get(o.t) as Outcome).mdd);
-        const indepR = dR.filter((_, i) => i % m === 0);
-        const indepM = dM.filter((_, i) => i % m === 0);
-        row[s] = {
-          n: outs.length,
-          ret: mean(outs.map((o) => o.ret)),
-          mdd: mean(outs.map((o) => o.mdd)),
-          p10: quantile(outs.map((o) => o.ret), 0.1),
-          dRet: mean(dR),
-          dRetCI: ci95(indepR),
-          dMdd: mean(dM),
-          dMddCI: ci95(indepM),
-          mddWin: dM.filter((x) => x > 1e-9).length / dM.length, // mdd 는 음수: 클수록(0에 가까울수록) 낙폭이 작음
-        };
+        row[s] = comboCell(outs, base, m);
       }
       summary[profile]![`m${m}`] = row;
     }

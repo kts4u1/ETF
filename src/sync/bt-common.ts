@@ -30,6 +30,7 @@ export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; 
     const series = cleanSeries(raw);
     if (series.dates.length > 60) loaded.push({ rec, series, ended: endedEarly(series, snap.asOf) });
   }
+  assertUniverseUsable(loaded.length, snap.etfs.length, process.env.BACKTEST_ALLOW_PARTIAL === "1");
   // 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF(있을 때만). 생존편향을 줄이기 위한 것이다.
   let delistedIncluded = 0;
   const { loaded: delisted, skipped: delistedSkipped } = await loadCachedDelisted();
@@ -84,7 +85,7 @@ export function median(xs: number[]): number {
   return s.length % 2 ? (s[m] as number) : ((s[m - 1] as number) + (s[m] as number)) / 2;
 }
 /**
- * 양측 95% Student t 임계값(자유도 df). 겹치지 않는 표본은 2~11개뿐이라 정규분포의 1.96 을 쓰면
+ * 양측 95% Student t 임계값(자유도 df). 겹치지 않는 표본은 2~22개뿐이라 정규분포의 1.96 을 쓰면
  * 구간이 크게 좁아져(표본 3개면 2.2배, 2개면 6.5배) 우연한 '유의'가 생긴다. df>30 은 구간별 보수적 근사.
  */
 const T95 = [
@@ -103,6 +104,42 @@ export function tCritical95(df: number): number {
 /** 표본 평균의 95% 신뢰구간 반폭(t 분포). 표본이 2개 미만이면 NaN. */
 export function ci95(xs: number[]): number {
   return xs.length > 1 ? tCritical95(xs.length - 1) * stderr(xs) : NaN;
+}
+
+/**
+ * 매월 겹치는 m개월 수익률에서 "겹치지 않는 표본"의 평균과 95% 구간(t 분포).
+ * 월 시계열에서 m개월 간격으로 뽑으면 겹치지 않지만, 어느 달부터 뽑느냐(시작 위상 0..m-1)에 따라 결과가 달라진다 —
+ * 첫 달부터만 뽑으면 위상 하나에 결과가 좌우된다(실제로 위상에 따라 유의 칸 수가 0~1개로 바뀌었다).
+ * 그래서 가능한 m가지 시작 위상을 모두 계산해(표본이 2개 이상인 위상만) 평균과 구간 반폭을 각각 평균한다.
+ * n 은 쓴 위상들의 평균 표본 수(반올림). 쓸 수 있는 위상이 없으면 n=floor(길이/m), mean 은 전체 평균, ci 는 NaN.
+ */
+export function phaseCI(xs: number[], m: number): { mean: number; ci: number; n: number } {
+  const means: number[] = [];
+  const cis: number[] = [];
+  const sizes: number[] = [];
+  for (let p = 0; p < m; p++) {
+    const sub = xs.filter((_, i) => i % m === p);
+    if (sub.length < 2) continue;
+    means.push(mean(sub));
+    cis.push(ci95(sub));
+    sizes.push(sub.length);
+  }
+  if (!means.length) return { mean: xs.length ? mean(xs) : NaN, ci: NaN, n: Math.floor(xs.length / m) };
+  return { mean: mean(means), ci: mean(cis), n: Math.round(mean(sizes)) };
+}
+
+/**
+ * 상장 ETF 시세 캐시가 비었거나 일부만 있는 상태에서 백테스트를 돌리면 빈 결과가 커밋된 산출물(backtest.json,
+ * BACKTEST.md)을 덮어쓴다. 현재 상장 ETF의 절반 미만만 읽었으면 중단한다(개발용 부분 실행은 allowPartial).
+ */
+export function assertUniverseUsable(listedLoaded: number, snapshotCount: number, allowPartial = false): void {
+  if (allowPartial || snapshotCount === 0) return;
+  if (listedLoaded < snapshotCount / 2) {
+    throw new Error(
+      `시세 캐시가 부족합니다(현재 상장 ETF ${snapshotCount}개 중 ${listedLoaded}개만 읽음). 먼저 \`npm run sync\` 를 실행하세요. `
+        + "(부분 캐시로 일부러 돌리려면 BACKTEST_ALLOW_PARTIAL=1)",
+    );
+  }
 }
 
 export function stderr(xs: number[]): number {
