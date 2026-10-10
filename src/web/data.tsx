@@ -25,6 +25,8 @@ export interface BacktestSummary {
   comboMonths?: number;
   /** 백테스트에 포함된 상장폐지 ETF 수(0이면 생존편향 미보정) */
   delistedIncluded?: number;
+  /** 상장폐지 목록을 만든 KRX 스냅샷 기준일(YYYYMMDD, 오름차순). 이 날짜 이후에 폐지된 ETF만 확실히 포함됨 */
+  delistedSnapshots?: string[];
 }
 export interface BacktestCell {
   n: number;

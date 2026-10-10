@@ -78,11 +78,12 @@ src/
 │  ├─ build-snapshot.ts 수집 → 분류·지표 계산 → public/data/*.json
 │  ├─ build-holdings.ts 구성종목 → 노출 계산 → holdings.json
 │  ├─ delisted.ts       (선택) 상장폐지 ETF CSV 가져오기
+│  ├─ derive-delisted.ts KRX 과거 시점 '전종목 시세' 파일 → 상장폐지 ETF 목록 도출·검증
 │  ├─ backtest.ts       종목 점수 워크포워드 백테스트
 │  └─ backtest-combos.ts 조합 제안 워크포워드 검증
 └─ web/      React SPA (Vite)
 public/data/ snapshot.json(지표), series.json(주간 종가), holdings.json(구성종목), backtest.json(검증 요약)
-data/        (선택) delisted.csv — 상장폐지 ETF 목록. 형식은 data/README.md
+data/        delisted.csv(상장폐지 ETF 목록)·delisted.meta.json(목록을 만든 KRX 기준일). 만드는 법은 data/README.md
 scripts/     개발용 도구(분류 점검 audit-taxonomy.ts, 추천 미리보기 preview.ts)
 ```
 
@@ -96,7 +97,8 @@ scripts/     개발용 도구(분류 점검 audit-taxonomy.ts, 추천 미리보�
 - 시세는 최근 약 8년(2,000거래일)만 수집하므로 더 오래된 ETF의 실제 상장일은 알 수 없습니다(화면에는 "8년 이상"으로 표기).
 - 환율·금리 전망, 밸류에이션은 반영하지 않습니다. 구성종목 겹침은 레버리지·인버스·합성 ETF(179개)와 종목 식별 비중이 50% 미만인 ETF(13개)에는 계산하지 않습니다(980/1,172개 계산 가능).
 - 조합 제안은 **수익을 예측하지 않습니다.** 검증에서 효과가 확인된 것은 보유 중 낙폭 감소이고 수익 개선은 확인되지 않았습니다.
-- 백테스트는 **생존편향을 아직 보정하지 못했습니다**(상장폐지 목록은 로그인·접근 제한으로 자동 수집 불가). `data/delisted.csv`를 직접 제공하면 반영합니다. 그 외 짧은 단일 장세, 표본 중첩 한계가 있습니다.
+- 백테스트의 **생존편향은 부분만 보정**했습니다. KRX 전종목 시세 2026-04-10 파일로 그 이후 상장폐지된 ETF 21개를 포함했고 유의성이 바뀐 결과는 없었지만(종합점수 초과수익 최대 0.4%p 변화),
+  그 이전에 폐지된 ETF와 기준일 사이에 상장했다가 폐지된 ETF는 빠져 있습니다. 더 이른 날짜의 파일을 `npm run derive-delisted`로 추가하면 범위가 넓어집니다(`data/README.md`). 그 외 짧은 단일 장세, 표본 중첩 한계가 있습니다.
 
 ## 라이선스 / 고지
 

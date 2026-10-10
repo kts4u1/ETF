@@ -16,6 +16,7 @@ import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from ".
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
 import { runComboBacktest } from "./backtest-combos";
 import { loadUniverse, mean, median, monthEnds, stderr, universeAsOf } from "./bt-common";
+import { loadDelistedMeta } from "./derive-delisted";
 
 const FWD_MONTHS = [3, 6, 12] as const;
 const TOP_N = 10;
@@ -125,17 +126,20 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
   }
 
   const combo = runComboBacktest(loaded, dates, log);
+  // 상장폐지 목록을 만든 KRX 스냅샷 기준일(없으면 직접 만든 목록이라 범위를 알 수 없다)
+  const delistedSnapshots = delistedIncluded > 0 ? ((await loadDelistedMeta())?.snapshots ?? []) : [];
   await writeFile(
     "public/data/backtest.json",
     JSON.stringify({
       ...buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length),
       delistedIncluded,
+      delistedSnapshots,
       combos: combo.summary,
       comboMonths: combo.nMonths,
     }),
   );
   return (
-    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded }) +
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded, delistedSnapshots }) +
     combo.markdown
   );
 }
@@ -183,6 +187,7 @@ function buildSummary(
 
 // ───────── 리포트 ─────────
 
+const fmtYmd = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;
 const signed = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(d)}%p`;
 
@@ -217,6 +222,7 @@ function renderReport(a: {
   nEtf: number;
   nDates: number;
   delistedIncluded: number;
+  delistedSnapshots: string[];
 }): string {
   const L: string[] = [];
   L.push("# 백테스트 리포트 (워크포워드)");
@@ -227,8 +233,11 @@ function renderReport(a: {
   L.push("");
   L.push(
     a.delistedIncluded > 0
-      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산해 생존편향을 줄였습니다(완전히 제거되지는 않음: 목록에 없는 상장폐지 ETF는 여전히 빠져 있음).`
-      : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
+      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${a.delistedSnapshots.length ? `, KRX 전종목 시세 ${a.delistedSnapshots.map(fmtYmd).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
+        + (a.delistedSnapshots.length
+          ? `**부분 보정입니다** — 가장 이른 기준일(${fmtYmd(a.delistedSnapshots[0] as string)}) 이전에 상장폐지된 ETF와, 기준일 사이에 상장했다가 폐지된 ETF는 여전히 빠져 있어 생존편향이 남아 있습니다.`
+          : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
+      : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. KRX 과거 시점 파일로 `npm run derive-delisted`를 실행하거나 `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
   );
   L.push("> **해석 시 주의** — 생존편향(현재 상장 ETF만 포함), 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. "
     + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
