@@ -229,7 +229,8 @@ input[type="search"] { width: 100%; }
 .caution-info .caution-badge { color: var(--text-3); }
 
 /* ───────── 테이블 ───────── */
-.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+/* position: relative — 표 안의 .sr-only(절대 위치) 글자가 스크롤 영역 밖으로 빠져나와 페이지 가로 스크롤을 만들지 않게 한다 */
+.table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .card > .table-wrap { border: 0; border-radius: 0; background: transparent; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th, .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
@@ -243,6 +244,8 @@ input[type="search"] { width: 100%; }
 .name-cell { min-width: 220px; }
 .name-cell a { font-weight: 700; display: block; }
 .name-cell .muted { font-size: 12px; }
+/* 이름 칸이 숫자 칸에 밀려 글자 단위로 줄바꿈되지 않도록 최소 폭을 둔다(영문 ETF 이름이 길다) */
+.table td.cell-name { min-width: 190px; }
 .name-cell .mkt { font-size: 11px; padding: 0 6px; margin-right: 2px; }
 .table .num.wrap-cell { white-space: normal; min-width: 120px; font-size: 12.5px; }
 .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 800; }
@@ -363,6 +366,9 @@ input[type="search"] { width: 100%; }
   nav { order: 3; flex: 1 0 100%; }
 }
 @media (max-width: 520px) {
+  /* 5년 수익률이 세 자리(+107.7%)여도 칸 안에서 "%" 가 떨어져 나가지 않게 */
+  .returns td { font-size: 13px; padding: 8px 1px; }
+  .returns .delta { white-space: nowrap; }
   h1 { font-size: 22px; }
   .hero h1 { font-size: 24px; }
   .card { padding: 14px; }

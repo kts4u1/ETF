@@ -182,7 +182,7 @@ export function Detail({ code }: { code: string | null }) {
               <tbody>
                 {group.map((g) => (
                   <tr key={g.code} className={g.code === e.code ? "current" : ""}>
-                    <td><MarketBadge etf={g} /> {g.code === e.code ? <b>{g.name}</b> : <a href={etfHref(g.code)}>{g.name}</a>}</td>
+                    <td className="cell-name"><MarketBadge etf={g} /> {g.code === e.code ? <b>{g.name}</b> : <a href={etfHref(g.code)}>{g.name}</a>}</td>
                     <td className="num">{fmtFee(g.fee)}{g.fee === minFee && <span className="badge">최저</span>}</td>
                     <td className="num">{fmtEok(g.aumEok)}</td>
                     <td className="num">{fmtWon(g.m.avgValue20)}</td>
