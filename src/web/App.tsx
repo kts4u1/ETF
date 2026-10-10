@@ -54,7 +54,7 @@ function Shell() {
     <>
       <header className="topbar">
         <div className="wrap topbar-in">
-          <a className="brand" href={href("/")}><span className="logo" aria-hidden>↗</span> ETF 길잡이</a>
+          <a className="brand" href={href("/")}><span className="logo" aria-hidden>↗</span> ETF Search</a>
           <nav aria-label="주 메뉴">
             {NAV.map((n) => (
               <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>{n.label}</a>

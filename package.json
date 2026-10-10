@@ -1,5 +1,5 @@
 {
-  "name": "etf-picker",
+  "name": "etf-search",
   "version": "0.1.0",
   "private": true,
   "description": "한국 상장 ETF를 분류·비교하고, 과거 데이터 기반 정량 점수로 후보를 추천하는 앱",

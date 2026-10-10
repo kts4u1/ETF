@@ -60,6 +60,7 @@ interface AppData {
 }
 
 const Ctx = createContext<AppData | null>(null);
+// 앱 이름이 바뀌어도 저장된 설정(및 App.tsx 의 테마 키)이 사라지지 않도록 예전 접두사를 유지한다.
 const PREFS_KEY = "etf-picker:prefs:v1";
 
 function loadPrefs(): Preferences {
