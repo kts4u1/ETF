@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
+import { weekdays } from "./us.fixtures";
 import { assertUniverseUsable, ci95, icInterval, indepRangeText, loadUniverse, mean, phaseCI, stderr, tCritical95, universeAsOf, type Loaded } from "./bt-common";
 
 /** 2023-01-02 부터 평일마다 하나씩, 완만하게 오르는 시세 */
@@ -197,5 +198,71 @@ describe("loadUniverse: 시세 캐시가 모자랄 때 중단(커밋된 결과�
     process.env.BACKTEST_ALLOW_PARTIAL = "1";
     const r = await loadUniverse();
     expect(r.loaded).toHaveLength(0);
+  });
+});
+
+describe("loadUniverse: 해외 상장 ETF 가 섞인 스냅샷에서도 백테스트 유니버스는 국내 상장만으로 같다", () => {
+  let dir = "";
+  let prev = "";
+  const KR = ["100000", "100001", "100002"];
+  const US = ["SPY", "QQQ", "IWM", "TLT", "GLD", "VTI"];
+  const krRec = (code: string) => ({ code, name: `국내 ${code}` });
+  const usRec = (code: string) => ({ code, name: `US ${code}`, market: "US", priceNative: 100 });
+  const snapshot = (etfs: unknown[], extra: Record<string, unknown> = {}) => ({ version: 1, generatedAt: "", asOf: "20261008", source: "t", etfs, ...extra });
+  const writePrices = async (code: string) => {
+    const dates = weekdays(Date.UTC(2026, 4, 1) / 1000, Date.UTC(2026, 9, 8) / 1000); // 5/1 ~ 10/8
+    await writeFile(`.cache/naver/price/${code}.json`, JSON.stringify({ fetchedOn: "20261010", data: { dates, close: dates.map((_, k) => 1000 + k), volume: dates.map(() => 10) } }));
+  };
+
+  beforeEach(async () => {
+    prev = process.cwd();
+    dir = await mkdtemp(join(tmpdir(), "load-universe-us-"));
+    process.chdir(dir);
+    await mkdir("public/data", { recursive: true });
+    await mkdir(".cache/naver/price", { recursive: true });
+    for (const c of KR) await writePrices(c);
+    // 해외 ETF 의 시세가 (잘못) 국내 캐시 폴더에 있어도 유니버스에 들어가면 안 된다
+    for (const c of US) await writePrices(c);
+  });
+  afterEach(async () => {
+    delete process.env.BACKTEST_ALLOW_PARTIAL;
+    process.chdir(prev);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("해외 레코드를 읽지 않는다: 국내 3개만 로드된다", async () => {
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot([...KR.map(krRec), ...US.map(usRec)])));
+    const r = await loadUniverse();
+    expect(r.loaded.map((l) => l.rec.code)).toEqual(KR);
+    expect(r.loaded.every((l) => l.rec.market === undefined)).toBe(true);
+  });
+
+  it("국내만 있는 스냅샷과 해외가 섞인 스냅샷의 결과가 완전히 같다(asOf·종료 여부·상장폐지 포함 수)", async () => {
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot(KR.map(krRec))));
+    const domesticOnly = await loadUniverse();
+    // 해외 기준일(asOfUs)이 한 달 넘게 뒤여도 종료(endedEarly) 판정은 국내 기준일(asOf)로 한다
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot([...KR.map(krRec), ...US.map(usRec)], { asOfUs: "20261130", fxUsdKrw: { rate: 1300, date: "20261130" } })));
+    const mixed = await loadUniverse();
+    expect(mixed).toEqual(domesticOnly);
+    expect(mixed.asOf).toBe("20261008");
+    expect(mixed.loaded.every((l) => !l.ended)).toBe(true);
+  });
+
+  it("전체 개수(fullCount)는 국내 레코드만 센다: 해외가 더 많아도 '절반 미만'으로 중단하지 않는다", async () => {
+    // 국내 3개가 모두 읽히지만, 해외 6개를 세면 9개 중 3개(절반 미만)가 되어 던지게 된다
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot([...KR.map(krRec), ...US.map(usRec)])));
+    await expect(loadUniverse()).resolves.toBeTruthy();
+  });
+
+  it("국내 시세 캐시가 부족하면 해외가 아무리 많아도 여전히 중단한다(assertUniverseUsable 의 의미 유지)", async () => {
+    await rm(".cache/naver/price/100001.json");
+    await rm(".cache/naver/price/100002.json");
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot([...KR.map(krRec), ...US.map(usRec)])));
+    await expect(loadUniverse()).rejects.toThrow(/현재 상장 ETF 3개 중 1개만 읽음/);
+  });
+
+  it("market 필드가 없는 이전 스냅샷은 모두 국내로 본다", async () => {
+    await writeFile("public/data/snapshot.json", JSON.stringify(snapshot(KR.map(krRec))));
+    expect((await loadUniverse()).loaded).toHaveLength(3);
   });
 });
