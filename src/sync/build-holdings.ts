@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { buildExposures, type EtfInput } from "../core/holdings";
+import { buildExposures, type EtfInput, type HoldingRow } from "../core/holdings";
+import { isOverseas } from "../core/market";
 import type { HoldingsFile } from "../core/overlap";
 import type { Snapshot } from "../core/types";
 import { OUT_DIR, loadCachedHoldings } from "./build-snapshot";
@@ -17,9 +18,26 @@ const isDerivativeStructure = (tags: string[]) => tags.some((t) => t === "levera
 
 export async function buildHoldingsFile(maxEntries = HOLDINGS_MAX_ENTRIES): Promise<{ file: HoldingsFile; available: number; total: number }> {
   const snap = JSON.parse(await readFile(`${OUT_DIR}/snapshot.json`, "utf8")) as Snapshot;
+  const result = await buildHoldingsData(snap, loadCachedHoldings, maxEntries);
+  await writeFile(`${OUT_DIR}/holdings.json`, JSON.stringify(result.file));
+  return result;
+}
+
+/** 스냅샷과 구성종목 로더로 holdings.json 내용을 만든다(디스크에 쓰지 않는다 — 테스트하기 쉽게 분리). */
+export async function buildHoldingsData(
+  snap: Pick<Snapshot, "asOf" | "etfs">,
+  loadRows: (code: string) => Promise<HoldingRow[] | null>,
+  maxEntries = HOLDINGS_MAX_ENTRIES,
+): Promise<{ file: HoldingsFile; available: number; total: number }> {
   const inputs: EtfInput[] = [];
+  // 해외 상장 ETF 는 구성종목 전체를 구할 수 없어 찾지도 않는다(국내 ETF 의 겹침 계산에도 끼지 않는다)
+  const overseas: string[] = [];
   for (const e of snap.etfs) {
-    const rows = await loadCachedHoldings(e.code);
+    if (isOverseas(e)) {
+      overseas.push(e.code);
+      continue;
+    }
+    const rows = await loadRows(e.code);
     inputs.push({ code: e.code, name: e.name, rows: rows ?? [], derivativeStructure: isDerivativeStructure(e.tax.tags) });
   }
   const exposures = buildExposures(inputs);
@@ -57,6 +75,6 @@ export async function buildHoldingsFile(maxEntries = HOLDINGS_MAX_ENTRIES): Prom
       w: top.map(([, w]) => Math.round(w * 100)),
     };
   }
-  await writeFile(`${OUT_DIR}/holdings.json`, JSON.stringify(file));
+  for (const code of overseas) file.unavailable[code] = "overseas-listed";
   return { file, available: Object.keys(file.etfs).length, total: snap.etfs.length };
 }
