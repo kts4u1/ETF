@@ -3,6 +3,7 @@ import { cautions, explain, structureNotes, taxNote, typeLine } from "../../core
 import { feeWonPer10M, fmtDate, fmtEok, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
 import { mddOf, sameGroup, volOf } from "../../core/scoring";
 import { CautionList, Delta, Disclaimer, FactorBars, RiskPips, TagChips } from "../components/bits";
+import { HoldingsSection } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
 import { useApp, useSeries } from "../data";
 import { compareHref, etfHref, href } from "../router";
@@ -135,6 +136,8 @@ export function Detail({ code }: { code: string | null }) {
           </tbody>
         </table>
       </section>
+
+      <HoldingsSection etf={e} />
 
       <section className="card" aria-labelledby="warn-h">
         <h2 id="warn-h">알아둘 점</h2>

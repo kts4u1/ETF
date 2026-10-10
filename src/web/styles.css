@@ -201,6 +201,10 @@ input[type="search"] { width: 100%; }
 .factor-val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bar-track { display: block; height: 8px; border-radius: 4px; background: var(--seq-track); overflow: hidden; }
 .bar-track.inline { display: inline-block; width: 90px; vertical-align: middle; margin-right: 6px; }
+.bar-track.inline.wide { width: min(240px, 60%); }
+.stats.compact { border-top: 0; padding-top: 4px; margin-bottom: 8px; }
+.overlap-table td.diag { color: var(--text-3); }
+.overlap-table th[scope="row"] { position: static; color: var(--text-2); font-size: 13px; }
 .bar-fill { display: block; height: 100%; background: var(--seq-fill); border-radius: 0 4px 4px 0; max-width: 100%; }
 
 /* 주의사항: 아이콘 + 라벨 + 문장 (색에만 의존하지 않음) */

@@ -4,6 +4,7 @@ import { fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/for
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
 import { Disclaimer } from "../components/bits";
+import { OverlapPanel } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
 import { useApp, useSeries } from "../data";
 import { compareHref, etfHref, href } from "../router";
@@ -116,6 +117,8 @@ export function Compare({ codes }: { codes: string[] }) {
               </>
             ) : <div className="chart-loading">차트 불러오는 중…</div>}
           </section>
+
+          <OverlapPanel codes={picked.map((p) => p.code)} />
 
           <section className="card" aria-labelledby="cmp-table">
             <h2 id="cmp-table">지표 비교</h2>

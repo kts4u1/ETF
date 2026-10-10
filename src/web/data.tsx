@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
+import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
 import { readJson, writeJson } from "./storage";
 
@@ -143,3 +144,5 @@ const cache = new Map<string, unknown>();
 
 export const useSeries = () => useLazy<SeriesFile>("./data/series.json");
 export const useBacktest = () => useLazy<BacktestSummary>("./data/backtest.json");
+/** 구성종목(겹침 분석). 약 1MB 라 겹침 화면에서만 지연 로딩한다. */
+export const useHoldings = () => useLazy<HoldingsFile>("./data/holdings.json");
