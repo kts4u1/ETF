@@ -12,7 +12,7 @@
  *  3. 거래비용·세금·괴리율 미반영.
  */
 import { writeFile } from "node:fs/promises";
-import { fmtDate, fmtSurvivorshipGap } from "../core/format";
+import { fmtSnapshotList, fmtSurvivorshipGap } from "../core/format";
 import { forwardMaxDrawdown, forwardReturnMonths, shiftMonths } from "../core/metrics";
 import { DEFAULT_PREFS, diversify, percentileRanks, PROFILES, rankEtfs } from "../core/scoring";
 import type { FactorKey, Horizon, Profile, Scored } from "../core/types";
@@ -235,7 +235,7 @@ export function survivorshipText(a: { delistedIncluded: number; delistedSkipped:
     const snaps = a.delistedSnapshots;
     return {
       bullet:
-        `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${snaps.length ? `, KRX 전종목 시세 ${snaps.map(fmtDate).join("·")} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
+        `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv${snaps.length ? `, KRX 전종목 시세 ${fmtSnapshotList(snaps)} 기준` : ""}). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산했습니다. `
         + (snaps.length ? `**부분 보정입니다** — ${fmtSurvivorshipGap(snaps)}는 여전히 빠져 있어 생존편향이 남아 있습니다.` : "목록에 없는 상장폐지 ETF는 여전히 빠져 있습니다.")
         + skipped,
       caution: "생존편향(상장폐지 ETF는 일부만 포함 — 위 항목 참고)",

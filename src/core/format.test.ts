@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { feeWonPer10M, fmtEok, fmtFee, fmtHistory, fmtRatio, fmtSurvivorshipGap, fmtWon } from "./format";
+import { feeWonPer10M, fmtEok, fmtFee, fmtHistory, fmtRatio, fmtSnapshotList, fmtSurvivorshipGap, fmtWon } from "./format";
 
 describe("fmtFee", () => {
   it("초저보수는 자릿수를 늘려 구분 가능하게", () => {
@@ -65,5 +65,17 @@ describe("fmtSurvivorshipGap", () => {
     expect(t).toContain("2025-12-30 이전에 상장폐지된 ETF");
     expect(t).toContain("기준일들 사이");
     expect(t).not.toContain("2026-04-10");
+  });
+});
+
+describe("fmtSnapshotList", () => {
+  it("3개 이하면 날짜를 모두, 많으면 개수와 범위만", () => {
+    expect(fmtSnapshotList(["20260410"])).toBe("2026-04-10");
+    expect(fmtSnapshotList(["20251010", "20260410"])).toBe("2025-10-10·2026-04-10");
+    expect(fmtSnapshotList(["20230410", "20231010", "20240411"])).toBe("2023-04-10·2023-10-10·2024-04-11");
+    expect(fmtSnapshotList(["20201230", "20210630", "20211230", "20220630"])).toBe("4개(2020-12-30~2022-06-30)");
+  });
+  it("빈 목록은 빈 문자열", () => {
+    expect(fmtSnapshotList([])).toBe("");
   });
 });

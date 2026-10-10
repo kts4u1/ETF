@@ -48,6 +48,12 @@ export const feeWonPer10M = (fee: number): number => Math.round((fee / 100) * 10
 /** 20261008 → 2026-10-08 */
 export const fmtDate = (ymd: string): string => `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
 
+/** KRX 스냅샷 기준일 목록 표기: 3개 이하면 모두, 많으면 개수와 범위만(예: "12개(2020-12-30~2026-04-10)"). */
+export const fmtSnapshotList = (snapshots: string[]): string => {
+  if (snapshots.length <= 3) return snapshots.map(fmtDate).join("·");
+  return `${snapshots.length}개(${fmtDate(snapshots[0] as string)}~${fmtDate(snapshots[snapshots.length - 1] as string)})`;
+};
+
 /**
  * 상장폐지 목록을 만든 KRX 스냅샷 기준일(오름차순)이 놓치는 범위를 한 문장 조각으로 설명한다.
  * 기준일 시점에 상장돼 있다가 사라진 ETF만 잡히므로, 가장 이른 기준일 이전 폐지분과

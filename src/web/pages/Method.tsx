@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtDate, fmtRatio, fmtSurvivorshipGap } from "../../core/format";
+import { fmtRatio, fmtSnapshotList, fmtSurvivorshipGap } from "../../core/format";
 import { EXCLUSION_LABEL, FACTOR_KEYS, FACTOR_LABELS, HORIZONS, MIN_AVG_VALUE, PROFILES, effectiveWeights } from "../../core/scoring";
 import type { Profile } from "../../core/types";
 import { Disclaimer } from "../components/bits";
@@ -43,7 +43,7 @@ function Survivorship({ bt }: { bt: BacktestSummary }) {
   }
   return snaps.length ? (
     <>
-      KRX 전종목 시세({snaps.map(fmtDate).join("·")} 기준)에 있었다가 이후 상장폐지된 ETF {n}개를 포함했고, 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 계산했습니다.
+      KRX 전종목 시세({fmtSnapshotList(snaps)} 기준)에 있었다가 이후 상장폐지된 ETF {n}개를 포함했고, 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 계산했습니다.
       다만 <b>부분 보정</b>입니다 — {fmtSurvivorshipGap(snaps)}는 여전히 빠져 있어 절대 수익은 다소 과대평가될 수 있습니다.
     </>
   ) : (
