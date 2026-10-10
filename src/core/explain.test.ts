@@ -115,9 +115,6 @@ describe("explain", () => {
   });
 });
 
-import { explainProposal } from "./explain";
-import type { ComboCandidate, Proposal } from "./portfolio";
-
 describe("explainProposal", () => {
   const cand = (name: string): ComboCandidate => ({ etf: makeEtf({ name, code: name }), score: 70, returns: [] });
   const proposal = (over: Partial<Proposal> = {}): Proposal => ({

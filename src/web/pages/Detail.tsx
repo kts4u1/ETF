@@ -1,8 +1,11 @@
 import { useState } from "react";
+import type { EtfRecord } from "../../core/types";
 import { cautions, explain, structureNotes, taxNote, typeLine } from "../../core/explain";
-import { feeWonPer10M, fmtDate, fmtEok, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
+import { feeWonPer10M, fmtDate, fmtEok, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon, priceParts } from "../../core/format";
+import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
+import { FX_NOTE, listingLine } from "../../core/market-view";
 import { mddOf, sameGroup, volOf } from "../../core/scoring";
-import { CautionList, Delta, Disclaimer, FactorBars, RiskPips, TagChips } from "../components/bits";
+import { CautionList, Delta, Disclaimer, FactorBars, FxNote, MarketBadge, RiskPips, TagChips } from "../components/bits";
 import { HoldingsSection } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
 import { useApp, useSeries } from "../data";
@@ -32,6 +35,11 @@ export function Detail({ code }: { code: string | null }) {
   const sl = series ? sliceSeries(series, e.code, RANGES[range]) : null;
   const notes = structureNotes(e);
   const minFee = Math.min(...group.map((g) => g.fee ?? Infinity));
+  const overseas = isOverseas(e);
+  const listing = listingLine(e);
+  const price = priceParts(e);
+  // 괴리율은 해외 상장 ETF에는 데이터가 없다. 빈칸으로 두지 않고 이유를 적는다.
+  const navGapText = (g: EtfRecord) => (isOverseas(g) ? "-" : fmtPercentUnit(g.navGap, 2, true));
 
   return (
     <>
@@ -40,12 +48,18 @@ export function Detail({ code }: { code: string | null }) {
         <div>
           <h1>{e.name}</h1>
           <p className="sub">{e.code} · {e.issuer ?? "운용사 미상"} · {typeLine(e)}</p>
+          {listing && <p className="sub">{listing}</p>}
           <div className="etf-meta"><TagChips etf={e} max={8} /><RiskPips etf={e} /></div>
         </div>
         <div className="price-box">
-          <b>{e.price.toLocaleString("ko-KR")}<small>원</small></b>
+          {price.sub ? (
+            <b>{price.main} <small className="price-krw">({price.sub})</small></b>
+          ) : (
+            <b>{Math.round(e.price).toLocaleString("ko-KR")}<small>원</small></b>
+          )}
           <span className="muted">전일 대비 {e.changeRate === null ? "-" : <span className={e.changeRate > 0 ? "up" : e.changeRate < 0 ? "down" : ""}>{fmtPercentUnit(e.changeRate, 2, true)}</span>}</span>
-          <span className="muted">{fmtDate(m.asOf)} 종가</span>
+          <span className="muted">{fmtDate(m.asOf)} 종가{overseas ? " · 현지 거래일 기준" : ""}</span>
+          {overseas && <span className="muted">{FX_NOTE}</span>}
         </div>
       </header>
 
@@ -62,7 +76,7 @@ export function Detail({ code }: { code: string | null }) {
         <section className="card notice" aria-label="추천 제외 안내">
           <b>현재 조건에서는 추천 후보가 아닙니다.</b>
           <p>{reason ?? "후보 조건을 충족하지 않습니다."}</p>
-          <p className="hint">아래 정보는 참고용으로 확인할 수 있습니다. 홈의 고급 옵션에서 조건을 바꾸면 후보에 포함될 수도 있습니다.</p>
+          <p className="hint">아래 정보는 참고용으로 확인할 수 있습니다. 홈에서 상장 시장이나 고급 옵션을 바꾸면 후보에 포함될 수도 있습니다.</p>
         </section>
       )}
 
@@ -87,11 +101,19 @@ export function Detail({ code }: { code: string | null }) {
         <section className="card" aria-labelledby="key-h">
           <h2 id="key-h">핵심 정보</h2>
           <dl className="kv">
+            <div><dt>상장 시장</dt><dd><MarketBadge etf={e} /> {MARKET_LABEL[marketOf(e)]}</dd></div>
+            {overseas && (
+              <>
+                <div><dt>거래소</dt><dd>{e.exchange ?? "-"}</dd></div>
+                <div><dt>모닝스타 카테고리 <small className="muted">(참고)</small></dt><dd>{e.category ?? "-"}</dd></div>
+                <div><dt>거래 통화</dt><dd>달러(USD)</dd></div>
+              </>
+            )}
             <div><dt>총보수 (연)</dt><dd>{fmtFee(e.fee)} <small className="muted">1,000만원당 연 {e.fee === null ? "-" : feeWonPer10M(e.fee).toLocaleString("ko-KR")}원</small></dd></div>
-            <div><dt>순자산</dt><dd>{fmtEok(e.aumEok)}</dd></div>
-            <div><dt>일평균 거래대금(20일)</dt><dd>{fmtWon(m.avgValue20)}</dd></div>
+            <div><dt>순자산{overseas && <small className="muted"> (원화 환산)</small>}</dt><dd>{fmtEok(e.aumEok)}</dd></div>
+            <div><dt>일평균 거래대금(20일){overseas && <small className="muted"> (원화 환산)</small>}</dt><dd>{fmtWon(m.avgValue20)}</dd></div>
             <div><dt>최근 12개월 분배율</dt><dd>{fmtPercentUnit(e.divYield)}</dd></div>
-            <div><dt>괴리율</dt><dd>{fmtPercentUnit(e.navGap, 2, true)}</dd></div>
+            <div><dt>괴리율</dt><dd>{overseas ? <>- <small className="muted">해외 상장은 제공하지 않음</small></> : fmtPercentUnit(e.navGap, 2, true)}</dd></div>
             <div><dt>시세 보유 기간</dt><dd>{fmtHistory(m.years, m.days)} {m.days < 1990 && <small className="muted">({fmtDate(m.firstDate)}~)</small>}</dd></div>
             <div><dt>연 변동성 (3년/1년)</dt><dd>{fmtRatio(m.vol3y, 0)} / {fmtRatio(m.vol1y, 0)}</dd></div>
             <div><dt>최대낙폭 ({m.mdd3y !== null ? "3년" : "1년"})</dt><dd>{fmtRatio(mddOf(e), 1)}</dd></div>
@@ -99,12 +121,13 @@ export function Detail({ code }: { code: string | null }) {
             <div><dt>샤프지수 ({m.sharpe3y !== null ? "3년" : "1년"})</dt><dd>{(m.sharpe3y ?? m.sharpe1y)?.toFixed(2) ?? "-"}</dd></div>
           </dl>
           <p className="hint">변동성 기준 위험: {volOf(e) === null ? "정보 없음" : `연 ${fmtRatio(volOf(e), 0)}`}. 수익률은 분배금이 보정된 수정주가 기준입니다.</p>
+          {overseas && <FxNote>{FX_NOTE}. 순자산은 달러 순자산에 기준일 환율을, 거래대금은 거래일 환율을 곱했고, 변동성·최대낙폭·수익률에는 환율 변동이 그대로 들어 있습니다.</FxNote>}
         </section>
       </div>
 
       <section className="card" aria-labelledby="chart-h">
         <div className="section-head">
-          <h2 id="chart-h">가격 추이 (주간 종가)</h2>
+          <h2 id="chart-h">가격 추이 (주간 종가{overseas ? ", 원화 환산" : ""})</h2>
           <div className="seg small" role="radiogroup" aria-label="기간">
             {(Object.keys(RANGES) as RangeKey[]).map((k) => (
               <button key={k} type="button" role="radio" aria-checked={range === k} className={range === k ? "on" : ""} onClick={() => setRange(k)}>{k}</button>
@@ -116,11 +139,12 @@ export function Detail({ code }: { code: string | null }) {
             dates={sl.dates}
             series={[{ id: e.code, label: e.name, color: "var(--series-1)", values: sl.values }]}
             yFormat={(v) => Math.round(v).toLocaleString("ko-KR")}
-            ariaLabel={`${e.name} 최근 ${range} 주간 종가 추이. 최근 1년 수익률 ${fmtRatio(m.ret.y1, 1, true)}`}
+            ariaLabel={`${e.name} 최근 ${range} 주간 종가 추이${overseas ? "(원화 환산)" : ""}. 최근 1년 수익률 ${fmtRatio(m.ret.y1, 1, true)}`}
           />
         ) : (
           <div className="chart-loading">차트 불러오는 중…</div>
         )}
+        {overseas && <FxNote>이 차트와 아래 수익률은 달러 수정종가 × 같은 날 원/달러 환율로 바꾼 원화 기준입니다. 환율 변동이 포함되어 달러 기준 차트·수익률과 다를 수 있습니다.</FxNote>}
         <table className="returns">
           <caption className="sr-only">기간별 수익률</caption>
           <thead><tr><th>1개월</th><th>3개월</th><th>6개월</th><th>1년</th><th>3년</th><th>5년</th></tr></thead>
@@ -158,12 +182,12 @@ export function Detail({ code }: { code: string | null }) {
               <tbody>
                 {group.map((g) => (
                   <tr key={g.code} className={g.code === e.code ? "current" : ""}>
-                    <td>{g.code === e.code ? <b>{g.name}</b> : <a href={etfHref(g.code)}>{g.name}</a>}</td>
+                    <td><MarketBadge etf={g} /> {g.code === e.code ? <b>{g.name}</b> : <a href={etfHref(g.code)}>{g.name}</a>}</td>
                     <td className="num">{fmtFee(g.fee)}{g.fee === minFee && <span className="badge">최저</span>}</td>
                     <td className="num">{fmtEok(g.aumEok)}</td>
                     <td className="num">{fmtWon(g.m.avgValue20)}</td>
                     <td className="num"><Delta v={g.m.ret.y1} /></td>
-                    <td className="num">{fmtPercentUnit(g.navGap, 2, true)}</td>
+                    <td className="num">{navGapText(g)}</td>
                   </tr>
                 ))}
               </tbody>

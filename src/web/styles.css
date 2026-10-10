@@ -129,6 +129,10 @@ nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
 .card.empty { text-align: center; color: var(--text-2); padding: 32px 18px; }
 .notice { border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); margin-top: 14px; }
+/* 방법론의 핵심 한계 안내: 일반 안내보다 굵은 띠와 큰 글자로 눈에 띄게 */
+.notice.key { border-left-width: 8px; font-size: 15px; padding: 14px 16px; margin-top: 0; background: var(--surface); }
+.notice.key > b { display: block; font-size: 16px; margin-bottom: 2px; }
+.notice.key-inline { margin: 8px 0; }
 .card.notice { background: var(--surface); }
 .btn { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: 9px; padding: 8px 14px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; min-height: 38px; }
 .btn:hover { text-decoration: none; filter: brightness(1.06); }
@@ -159,6 +163,8 @@ nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .check small { display: block; color: var(--text-3); font-size: 12px; line-height: 1.4; }
 .check.inline { align-items: center; }
 .select { display: grid; gap: 4px; font-size: 13px; color: var(--text-3); font-weight: 600; }
+.select-note { display: grid; gap: 4px; align-content: start; }
+.select-note .hint { margin: 0; }
 select, input[type="search"] { font: inherit; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-height: 38px; }
 input[type="search"] { width: 100%; }
 
@@ -178,6 +184,11 @@ input[type="search"] { width: 100%; }
 .chips { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 .chip { background: var(--surface-2); color: var(--text-2); border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
 .chip-danger { background: transparent; color: var(--high); border: 1px solid var(--high); }
+/* 상장 시장 배지: 색이 아니라 "국내"/"미국" 글자가 구분의 기준이다. 해외는 테두리를 강조색으로 한 번 더 구분한다. */
+.mkt { display: inline-block; border-radius: 6px; padding: 1px 7px; font-size: 12px; font-weight: 700; line-height: 1.5; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); white-space: nowrap; vertical-align: baseline; }
+.mkt-us { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.fx-note { margin: 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 8px 8px 0; font-size: 12.5px; color: var(--text-2); }
+.card > .fx-note, .kv + .hint + .fx-note { margin-top: 8px; }
 .risk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); font-weight: 600; }
 .pips { display: inline-flex; gap: 2px; }
 .pips i { width: 8px; height: 12px; border-radius: 2px; background: var(--seq-track); }
@@ -232,6 +243,8 @@ input[type="search"] { width: 100%; }
 .name-cell { min-width: 220px; }
 .name-cell a { font-weight: 700; display: block; }
 .name-cell .muted { font-size: 12px; }
+.name-cell .mkt { font-size: 11px; padding: 0 6px; margin-right: 2px; }
+.table .num.wrap-cell { white-space: normal; min-width: 120px; font-size: 12.5px; }
 .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 800; }
 .more { text-align: center; }
 .filters { display: grid; gap: 10px; }
@@ -243,6 +256,7 @@ input[type="search"] { width: 100%; }
 .price-box { display: grid; gap: 2px; text-align: right; font-size: 13px; }
 .price-box b { font-size: 28px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
 .price-box small { font-size: 14px; margin-left: 2px; font-weight: 600; }
+.price-box .price-krw { font-size: 14px; color: var(--text-2); letter-spacing: 0; }
 .score-card { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; align-items: center; }
 .score-big { line-height: 1; font-variant-numeric: tabular-nums; }
 .score-big b { font-size: 52px; letter-spacing: -0.04em; }

@@ -1,6 +1,26 @@
 import { ASSET_CLASS_LABEL, RISK_LABEL, TAG_LABEL, riskGrade, type Caution } from "../../core/explain";
+import { MARKET_LABEL, MARKET_SHORT, marketOf } from "../../core/market";
+import { FX_NOTE } from "../../core/market-view";
 import { FACTOR_KEYS, FACTOR_LABELS } from "../../core/scoring";
 import type { EtfRecord, FactorScores } from "../../core/types";
+
+/**
+ * 상장 시장 배지. 색(국내=회색, 해외=파랑 테두리)에만 기대지 않고 항상 "국내"/"미국" 글자를 함께 적는다.
+ * 스크린리더에는 "상장 시장 미국"으로 읽힌다.
+ */
+export function MarketBadge({ etf }: { etf: Pick<EtfRecord, "market"> }) {
+  const m = marketOf(etf);
+  return (
+    <span className={`mkt mkt-${m.toLowerCase()}`} title={`상장 시장: ${MARKET_LABEL[m]}`}>
+      <span className="sr-only">상장 시장 </span>{MARKET_SHORT[m]}
+    </span>
+  );
+}
+
+/** 해외(미국) 상장 ETF의 수치가 원화 환산값임을 밝히는 한 줄 */
+export function FxNote({ children }: { children?: React.ReactNode }) {
+  return <p className="fx-note" role="note">{children ?? FX_NOTE}</p>;
+}
 
 /** 위험 등급 5칸 미터. 색이 아니라 채워진 칸 수 + 텍스트 라벨로 전달한다. */
 export function RiskPips({ etf, showLabel = true }: { etf: EtfRecord; showLabel?: boolean }) {
@@ -22,6 +42,7 @@ export function TagChips({ etf, max = 6 }: { etf: EtfRecord; max?: number }) {
   for (const tag of t.tags) chips.push({ text: TAG_LABEL[tag] ?? tag, kind: tag === "leveraged" || tag === "inverse" ? "danger" : undefined });
   return (
     <span className="chips">
+      <MarketBadge etf={etf} />
       {chips.slice(0, max).map((c, i) => <span key={i} className={`chip${c.kind ? ` chip-${c.kind}` : ""}`}>{c.text}</span>)}
     </span>
   );
