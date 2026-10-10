@@ -248,12 +248,12 @@ export const isKnownUsCategory = (cat: string | null): boolean => categoryRule(c
 const MULT_RE = /(?<![\w.])(-?)(\d(?:\.\d{1,2})?)\s?[xX](?![a-z])/;
 const INVERSE_WORDS = /\b(?:Inverse|Bear|Bearish)\b|\bUltraPro\s+Short\b|\bUltraShort\b(?!\s+(?:Income|Bond|Duration|Municipal|Fixed|Credit|Maturity|Securities|Investment|Opportunit))/i;
 /** 채권·전략 이름에 흔한 "Short Term", "Short Duration" 은 인버스가 아니다. */
-const SHORT_NOT_INVERSE = "Term|Duration|Maturity|Treasur|Government|Corporate|Muni|Bond|Credit|Income|Investment|TIPS|Dated|Interest|Fixed|Floating|Core|Aggregate|Securit";
+const SHORT_NOT_INVERSE = "High|Yield|Term|Duration|Maturity|Treasur|Government|Corporate|Muni|Bond|Credit|Income|Investment|TIPS|Dated|Interest|Fixed|Floating|Core|Aggregate|Securit";
 /** "Short" 단독어. Short-Term·Short Duration·Long/Short 같은 채권·전략 이름은 제외한다. */
 const SHORT_WORD = new RegExp(`(?<![/\\w-])(?<!Long )(?<!Ultra )Short(?![\\w-])(?!\\s+(?:${SHORT_NOT_INVERSE}))`);
 /** 브랜드 바로 뒤에 오는 "Short ProShares Short S&P500" 식 인버스 */
 const STARTS_SHORT = new RegExp(`^Short\\s+(?!(?:${SHORT_NOT_INVERSE}))`);
-const VIX_RE = /\bVIX\b|VIX(?=[A-Z])|Volatility Premium|Volatility Index/i;
+const VIX_RE = /\bVIX\b|VIX(?=[A-Z])|Volatility Premium|(?<!\b(?:Low|Min|Minimum|Managed|Smart|Quality) )Volatility Index/i;
 const TAIL_HEDGE_RE = /Tail Risk|Tail Hedge|Black ?Swan/i;
 
 /**
@@ -265,7 +265,7 @@ function detectLeverage(n: string, body: string, cat: string | null): number {
   const catLev = cat?.startsWith("Trading--Leveraged") ?? false;
   // 꼬리위험(Tail Risk) 상품은 풋옵션으로 하락에 대비하는 상품이라 -1배 인버스가 아니다.
   const catInv = (cat?.startsWith("Trading--Inverse") ?? false) && !TAIL_HEDGE_RE.test(n);
-  const proshares = /^ProShares\b/i.test(n) || /^(?:Ultra|UltraPro|UltraShort)\b/i.test(body);
+  const proshares = /^ProShares\b/i.test(n);
 
   // 변동성 선물 상품은 운용 배수가 이름과 다르다(2018년 이후 ProShares Ultra VIX 1.5배, Short VIX -0.5배).
   if (VIX_RE.test(body) && !mm) {
@@ -335,6 +335,8 @@ function detectClass(cat: string | null, body: string): ClassCtx {
   if (rule) {
     // 'Commodities Focused' 안에는 광산 주식 펀드도 섞여 있다.
     if (rule.cls === "commodity" && COMMODITY_EQUITY_RE.test(body)) return out("equity");
+    // 모닝스타 Ultrashort Bond 에는 금리를 헷지한 회사채·하이일드 펀드도 있다 — 현금성이 아니라 채권이다.
+    if (cat === "Ultrashort Bond" && /Corporate|High[- ]Yield|Credit|Aggregate/i.test(body) && !TBILL_RE.test(body)) return out("bond");
     // 단기국채(T-Bill) 상품은 현금성이다(모닝스타는 Short Government 로 분류하기도 한다).
     if (cat === "Short Government" && TBILL_RE.test(body)) return out("cash");
     // 'Trading--*'는 가상자산·달러 지수 등 기초자산이 제각각이라 이름으로 가른다.

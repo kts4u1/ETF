@@ -47,7 +47,7 @@ export function Explore() {
       case "vol": return volOf(e);
       case "mdd": return mddOf(e);
       case "fee": return e.fee;
-      case "aum": return e.aumEok;
+      case "aum": return e.aumScope === "fund" ? null : e.aumEok; // † 펀드 합계는 순위에서 뺀다(ETF 클래스 규모가 아님)
       case "value": return e.m.avgValue20;
       case "years": return e.m.years;
     }
@@ -168,6 +168,7 @@ export function Explore() {
           </tbody>
         </table>
       </div>
+      {rows.slice(0, shown).some((e) => e.aumScope === "fund") && <p className="hint">{AUM_FUND_NOTE} 순자산 정렬에서는 † 항목을 맨 뒤로 보냅니다.</p>}
       {rows.length === 0 && <div className="card empty">조건에 맞는 ETF가 없습니다.</div>}
       {shown < rows.length && (
         <p className="more"><button type="button" className="btn ghost" onClick={() => setShown((n) => n + PAGE)}>더 보기 ({Math.min(PAGE, rows.length - shown)}개)</button></p>

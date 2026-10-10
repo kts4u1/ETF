@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASSET_CLASS_LABEL, TAG_LABEL, cautions, explain, explainProposal, riskGrade, structureNotes, taxNote, typeLine } from "./explain";
+import { ASSET_CLASS_LABEL, TAG_LABEL, cautions, explain, explainProposal, indexTrackingSentence, riskGrade, structureNotes, taxNote, typeLine } from "./explain";
 import type { ComboCandidate, Proposal } from "./portfolio";
 import { DEFAULT_PREFS, rankEtfs } from "./scoring";
 import { makeEtf } from "./test-utils";
@@ -296,5 +296,35 @@ describe("explainProposal 해외 상장 포함", () => {
     const c = explainProposal(proposal([kr, kr2]), () => undefined).cautions.join(" | ");
     expect(c).toMatch(/일부 ETF는 구성종목 정보가 없어\(레버리지·합성 등\) 겹침을 확인하지 못했습니다/);
     expect(c).not.toMatch(/해외 상장/);
+  });
+});
+
+describe("독립 검토에서 찾은 문구 오류 회귀", () => {
+  it("VIX 문구는 사는 쪽과 파는 쪽(SVOL 류)을 모두 설명한다", () => {
+    const e = makeUs({ tax: { tags: ["volatility"], theme: "변동성", broad: false } });
+    expect(structureNotes(e).join(" ")).toMatch(/파는 쪽은 시장이 안정적일 때/);
+    const c = cautions(e).find((x) => /VIX/.test(x.text));
+    expect(c?.text).toMatch(/선물을 파는 상품은 시장이 급락하면 큰 손실/);
+    expect(c?.text).toMatch(/장기 보유할수록 가치가 줄어드는 경향/);
+  });
+  it("운용 방식 문장: 액티브·옵션 전략·해외·국내를 구분하고, 해외는 지수 추종을 단정하지 않는다", () => {
+    expect(indexTrackingSentence(makeEtf({ name: "KODEX 200" }))).toBe("정해진 지수의 움직임을 따라가도록 운용됩니다.");
+    expect(indexTrackingSentence(makeUs({ tax: { tags: ["active"] } }))).toMatch(/운용역이 종목을 골라/);
+    expect(indexTrackingSentence(makeUs({ tax: { tags: ["covered-call"] } }))).toBe("");
+    expect(indexTrackingSentence(makeUs({ tax: { tags: ["defined-outcome"] } }))).toBe("");
+    const us = indexTrackingSentence(makeUs());
+    expect(us).toMatch(/정확하지 않을 수 있습니다/);
+    expect(us).not.toMatch(/정해진 지수의 움직임을 따라가도록/);
+  });
+  it("† 펀드 단위 순자산은 추천 사유에서 규모·청산 위험의 근거로 쓰지 않는다", () => {
+    const rank = (aumScope?: "fund") => {
+      const etf = makeUs({ aumEok: 9_000_000, m: { avgValue20: 5e9 }, ...(aumScope ? { aumScope } : {}) });
+      const r = rankEtfs([etf, makeEtf({ name: "KODEX 200" })], DEFAULT_PREFS);
+      return explain(r.ranked.find((x) => x.etf.code === etf.code)!, DEFAULT_PREFS).reasons.join(" ");
+    };
+    expect(rank()).toMatch(/청산 위험이 낮습니다/);
+    const fund = rank("fund");
+    expect(fund).not.toMatch(/청산 위험이 낮습니다/);
+    expect(fund).toMatch(/펀드 전체 합계/);
   });
 });

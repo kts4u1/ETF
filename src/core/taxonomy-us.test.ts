@@ -264,6 +264,32 @@ describe("classifyUs: 구조 태그 규칙", () => {
     expect(isKnownUsCategory("Prime Money Market")).toBe(true);
   });
 
+  it("독립 검토에서 찾은 오분류 회귀: 저변동성 지수·YieldMax Ultra·Short 채권·금리헷지 회사채", () => {
+    const lglv = classifyUs(info("LGLV", "State Street SPDR US Large Cap Low Volatility Index ETF", "Large Blend"));
+    expect(lglv.tags).not.toContain("volatility");
+    expect(lglv.tags).not.toContain("futures");
+    // 진짜 VIX 상품은 그대로 변동성 태그
+    expect(classifyUs(info("SVOL", "Simplify Volatility Premium ETF", "Derivative Income")).tags).toContain("volatility");
+    expect(classifyUs(info("UVXY", "ProShares Ultra VIX Short-Term Futures ETF", "Trading--Miscellaneous")).tags).toContain("volatility");
+
+    const ulty = classifyUs(info("ULTY", "YieldMax Ultra Option Income Strategy ETF", "Derivative Income"));
+    expect(ulty.leverage).toBe(1);
+    expect(ulty.tags).not.toContain("leveraged");
+    expect(classifyUs(info("BITU", "Proshares Ultra Bitcoin ETF", "Trading--Leveraged Commodities")).leverage).toBe(2);
+    expect(classifyUs(info("UWM", "ProShares Ultra Russell2000", "Trading--Leveraged Equity")).leverage).toBe(2);
+
+    const shyd = classifyUs(info("SHYD", "VanEck Short High Yield Muni ETF", "High Yield Muni"));
+    expect(shyd.leverage).toBe(1);
+    expect(shyd.tags).not.toContain("inverse");
+    // 진짜 인버스 하이일드는 카테고리로 여전히 인버스
+    const sjb = classifyUs(info("SJB", "ProShares Short High Yield", "Trading--Inverse Equity"));
+    expect(sjb.leverage).toBe(-1);
+
+    const lqdh = classifyUs(info("LQDH", "iShares Interest Rate Hedged Corporate Bond ETF", "Ultrashort Bond"));
+    expect(lqdh.assetClass).toBe("bond");
+    expect(classifyUs(info("BIL", "SPDR Bloomberg 1-3 Month T-Bill ETF", "Ultrashort Bond")).assetClass).toBe("cash");
+  });
+
   it("꼬리위험(Tail Risk) 상품은 카테고리가 인버스여도 -1배가 아니다", () => {
     const t = classifyUs(info("TAIL", "Cambria Tail Risk ETF", "Trading--Inverse Equity"));
     expect(t.leverage).toBe(1);

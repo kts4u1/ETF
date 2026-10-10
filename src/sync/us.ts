@@ -304,7 +304,7 @@ export function buildUsRecord(input: UsRecordInput): { etf: EtfRecord; series: P
 /** 네트워크 계층. 테스트는 이것만 바꿔 끼우면 네트워크 없이 전체 흐름을 돌릴 수 있다. */
 export interface UsDeps {
   fetchNasdaqList(): Promise<NasdaqList>;
-  fetchChart(symbol: string, fromUnix: number, toUnix: number, opts?: { requireAdjClose?: boolean }): Promise<ChartData>;
+  fetchChart(symbol: string, fromUnix: number, toUnix: number, opts?: { requireAdjClose?: boolean; tzIndependentDate?: boolean }): Promise<ChartData>;
   fetchFundInfo(symbol: string): Promise<FundInfo>;
   /** 펀드 정보용 쿠키+crumb 세션을 미리 만든다. 실패하면 던진다(없으면 건너뜀) */
   openSession?(): Promise<void>;
@@ -405,7 +405,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   const fx = await must("환율", async () => {
     // 범위 검사를 통과한 응답만 캐시에 남긴다(이상한 값이 캐시되면 같은 날 다시 실행해도 같은 오류가 반복된다)
     const chart = await cachedJson(join(dir, "fx.json"), force, async () => {
-      const c = await deps.fetchChart(FX_SYMBOL, nowUnix - FX_CALENDAR_DAYS * DAY, nowUnix, { requireAdjClose: false });
+      const c = await deps.fetchChart(FX_SYMBOL, nowUnix - FX_CALENDAR_DAYS * DAY, nowUnix, { requireAdjClose: false, tzIndependentDate: true });
       buildFxTable(c);
       return c;
     });

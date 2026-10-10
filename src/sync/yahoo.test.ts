@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./naver";
-import { NotFoundError, YahooClient, fetchChart, fetchFundInfo, parseChart, parseFundInfo, ymdFromUnix, type FetchLike } from "./yahoo";
+import { FX_DATE_SHIFT_SEC, NotFoundError, YahooClient, fetchChart, fetchFundInfo, parseChart, parseFundInfo, ymdFromUnix, type FetchLike } from "./yahoo";
 
 const utc = (y: number, m: number, d: number, h = 0, min = 0) => Date.UTC(y, m - 1, d, h, min) / 1000;
 
@@ -172,6 +172,42 @@ describe("parseChart", () => {
       expect(() => parseChart(chartJson({ ts, close: [1, 2, 3], events: [] }))).toThrow(/events/);
       expect(() => parseChart(chartJson({ ts, close: [1, 2, 3], events: { dividends: { a: 5 } } }))).toThrow(/dividends/);
     });
+  });
+});
+
+describe("환율 일봉 날짜: 응답의 gmtoffset(현재 계절 값 하나)에 흔들리지 않는다", () => {
+  // KRW=X 일봉은 런던 자정에 찍힌다: 여름(BST) 23:00Z, 겨울(GMT) 00:00Z. 6/3 런던 봉 = 6/2 23:00Z.
+  const summerBar = utc(2026, 6, 2, 23, 0);
+  const winterBar = utc(2026, 1, 15, 0, 0);
+  const liveBar = utc(2026, 10, 10, 3, 30); // 주말 장중 미완성 봉
+  const json = (gmtoffset: number) => chartJson({ ts: [summerBar, winterBar, liveBar].sort((a, b) => a - b), close: [1500, 1470, 1340], adj: null, gmtoffset });
+
+  it("gmtoffset 이 3600 이든 0 이든 같은 날짜가 나온다(겨울에 받아도 여름 봉이 하루 밀리지 않음)", () => {
+    const sorted = [winterBar, summerBar, liveBar];
+    const a = parseChart(chartJson({ ts: sorted, close: [1470, 1500, 1340], adj: null, gmtoffset: 3600 }), { symbol: "KRW=X", requireAdjClose: false, tzIndependentDate: true });
+    const b = parseChart(chartJson({ ts: sorted, close: [1470, 1500, 1340], adj: null, gmtoffset: 0 }), { symbol: "KRW=X", requireAdjClose: false, tzIndependentDate: true });
+    expect(a.dates).toEqual(["20260115", "20260603", "20261010"]);
+    expect(b.dates).toEqual(a.dates);
+  });
+  it("회귀: 옵션 없이 gmtoffset 만 쓰면 gmtoffset 0 에서 여름 봉이 하루 앞당겨진다(그래서 환율은 옵션을 쓴다)", () => {
+    const sorted = [winterBar, summerBar];
+    const wrong = parseChart(chartJson({ ts: sorted, close: [1470, 1500], adj: null, gmtoffset: 0 }), { symbol: "KRW=X", requireAdjClose: false });
+    expect(wrong.dates).toContain("20260602");
+    expect(FX_DATE_SHIFT_SEC).toBe(43_200);
+  });
+  it("주식 일봉은 여전히 거래소 gmtoffset 으로 계산한다", () => {
+    const c = parseChart(json(-14_400), { symbol: "SPY", requireAdjClose: false });
+    expect(c.dates).toContain("20260602"); // tzIndependentDate 없이 -4h 를 쓰면 23:00Z → 19:00 현지 6/2
+  });
+});
+
+describe("timestamp 단위 검증", () => {
+  it("밀리초 타임스탬프는 날짜가 수만 년 뒤로 계산되기 전에 오류로 멈춘다", () => {
+    expect(() => parseChart(chartJson({ ts: [utc(2026, 10, 9, 13, 30) * 1000], close: [100] }), { symbol: "SPY" })).toThrow(/초 단위가 아님/);
+    expect(() => parseChart(chartJson({ ts: [-5], close: [100] }), { symbol: "SPY" })).toThrow(/초 단위가 아님/);
+  });
+  it("정상 초 단위는 통과한다", () => {
+    expect(parseChart(chartJson({ ts: [utc(2026, 10, 9, 13, 30)], close: [100] }), { symbol: "SPY" }).dates).toEqual(["20261009"]);
   });
 });
 

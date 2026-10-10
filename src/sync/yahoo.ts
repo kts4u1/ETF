@@ -74,6 +74,13 @@ async function httpError(res: Response, url: string): Promise<HttpError> {
 }
 const bad = (what: string, why: string) => new Error(`야후 ${what} 응답 형식이 예상과 다릅니다(${why}). 엔드포인트가 바뀌었을 수 있습니다.`);
 
+/**
+ * 환율(KRW=X)처럼 거래소 시간대가 없는 시세의 날짜 보정(초). 일봉이 런던 자정(여름 23:00Z, 겨울 00:00Z)에 찍히는데
+ * meta.gmtoffset 은 응답을 받은 시점의 값 하나뿐이라, 그 값으로 전체 기간을 환산하면 반대편 계절의 봉이 하루 밀린다.
+ * 12시간을 더하면 어느 계절이든 같은 달력 날짜가 나온다(23:00Z→다음 날 11:00Z, 00:00Z→같은 날 12:00Z).
+ */
+export const FX_DATE_SHIFT_SEC = 12 * 3600;
+
 /** UTC 초 + 거래소 오프셋(초) → 거래소 현지 날짜 YYYYMMDD */
 export function ymdFromUnix(unixSec: number, gmtoffset: number): string {
   return new Date((unixSec + gmtoffset) * 1000).toISOString().slice(0, 10).replace(/-/g, "");
@@ -101,7 +108,7 @@ function emptyChart(symbol: string, meta: Record<string, unknown> = {}): ChartDa
  * - 404/오류 코드 "Not Found" 는 NotFoundError, 요청 기간에 데이터가 없다는 응답은 빈 시계열.
  * @param requireAdjClose false 면 수정종가가 없을 때 종가를 쓴다(환율처럼 배당이 없는 자산용)
  */
-export function parseChart(json: unknown, opts: { symbol?: string; requireAdjClose?: boolean } = {}): ChartData {
+export function parseChart(json: unknown, opts: { symbol?: string; requireAdjClose?: boolean; tzIndependentDate?: boolean } = {}): ChartData {
   const sym = opts.symbol ?? "?";
   const chart = isObj(json) && isObj(json.chart) ? json.chart : null;
   if (!chart) throw bad("차트", "chart 객체가 없음");
@@ -144,6 +151,8 @@ export function parseChart(json: unknown, opts: { symbol?: string; requireAdjClo
   for (let i = 0; i < n; i++) {
     const t = finite(ts[i]);
     if (t === null) throw bad("차트", `timestamp[${i}] 가 숫자가 아님`);
+    // 밀리초로 바뀌면 날짜가 수만 년 뒤로 계산되어 조용히 틀린 시계열이 된다 — 초 단위(2100년 이전)만 받는다
+    if (t < 0 || t > 4.1e9) throw bad("차트", `timestamp[${i}] 가 초 단위가 아님(${t})`);
     if (t < prevTs) throw bad("차트", "timestamp 가 오름차순이 아님");
     prevTs = t;
     const c = finite(closeArr[i]);
@@ -151,7 +160,7 @@ export function parseChart(json: unknown, opts: { symbol?: string; requireAdjClo
     const a = c !== null && opts.requireAdjClose === false ? (finite(adjArr[i]) ?? c) : finite(adjArr[i]);
     if (c === null || a === null || c <= 0 || a <= 0) continue;
     const v = finite(volArr[i]);
-    const d = ymdFromUnix(t, gmtoffset);
+    const d = ymdFromUnix(t, opts.tzIndependentDate ? FX_DATE_SHIFT_SEC : gmtoffset);
     const last = out.dates.length - 1;
     if (last >= 0 && out.dates[last] === d) {
       out.close[last] = c;
@@ -313,7 +322,7 @@ export class YahooClient {
    * 일별 시세와 분배금. 기간은 UTC 초 단위 [fromUnix, toUnix].
    * range=max 는 월 단위로 뭉개져 오므로 쓰지 않고 period1/period2 + interval=1d 를 쓴다. 세션이 필요 없다.
    */
-  async fetchChart(symbol: string, fromUnix: number, toUnix: number, opts: { requireAdjClose?: boolean } = {}): Promise<ChartData> {
+  async fetchChart(symbol: string, fromUnix: number, toUnix: number, opts: { requireAdjClose?: boolean; tzIndependentDate?: boolean } = {}): Promise<ChartData> {
     const url =
       `https://query1.finance.yahoo.com/v8/finance/chart/${pathSym(symbol)}` +
       `?period1=${Math.floor(fromUnix)}&period2=${Math.floor(toUnix)}&interval=1d&events=div`;
@@ -330,7 +339,7 @@ export class YahooClient {
       if (!res.ok) throw await httpError(res, url);
       return (await res.json()) as unknown;
     });
-    return parseChart(json, { symbol, requireAdjClose: opts.requireAdjClose });
+    return parseChart(json, { symbol, requireAdjClose: opts.requireAdjClose, tzIndependentDate: opts.tzIndependentDate });
   }
 
   /** 순자산·보수·카테고리·운용사. 쿠키+crumb 가 필요하고, 401 이면 세션을 새로 만들어 한 번 다시 시도한다. */

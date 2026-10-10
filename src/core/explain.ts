@@ -101,10 +101,22 @@ export function structureNotes(e: EtfRecord): string[] {
       : "환율 변동 영향을 줄이도록 환헤지(H)를 한 상품입니다.");
   }
   if (t.tags.includes("defined-outcome")) out.push("정해진 기간 동안 옵션으로 손실의 일부를 막아 주는 대신 상승폭에 상한을 두는 버퍼·목표수익 구조의 상품입니다.");
-  if (t.tags.includes("volatility")) out.push("주식시장 변동성(VIX) 선물을 이용해, 시장이 불안할 때 오르도록 설계된 상품입니다.");
+  if (t.tags.includes("volatility")) out.push("주식시장 변동성(VIX) 선물을 이용하는 상품입니다. 선물을 사는 쪽은 시장이 불안할 때 오르고, 파는 쪽은 시장이 안정적일 때 이익이 나도록 설계됩니다(상품마다 방향이 다르니 설명서로 확인하세요).");
   if (t.tags.includes("synthetic")) out.push("실제 자산 대신 증권사와의 스왑 계약으로 지수를 추종하는 합성 상품입니다.");
   if (t.tags.includes("concentrated")) out.push("소수 종목에 집중 투자하는 상품입니다.");
   return out;
+}
+
+/**
+ * "이 ETF는 무엇인가요?" 첫 문단의 운용 방식 문장. 지수 추종 여부는 이름·태그로만 판단하므로,
+ * 옵션·선물 전략은 지수 추종이라고 하지 않고(구조는 아래 설명이 말한다) 해외 상장은 단정하지 않는다.
+ */
+export function indexTrackingSentence(e: EtfRecord): string {
+  const tags = e.tax.tags;
+  if (tags.includes("active")) return "운용역이 종목을 골라 지수 대비 초과수익을 노립니다.";
+  if (tags.some((t) => t === "covered-call" || t === "defined-outcome" || t === "volatility")) return "";
+  if (isOverseas(e)) return "지수·전략을 따라가도록 운용되는 상품으로 보이지만, 지수 추종형인지 운용역이 종목을 고르는 액티브형인지는 이 앱이 이름으로만 판단해 정확하지 않을 수 있습니다.";
+  return "정해진 지수의 움직임을 따라가도록 운용됩니다.";
 }
 
 /** 세금 안내(일반론). 세법은 바뀔 수 있으므로 단정하지 않고 확인을 권한다. */
@@ -164,7 +176,7 @@ export function cautions(e: EtfRecord): Caution[] {
   if (t.tags.includes("volatility")) {
     out.push({
       level: "high",
-      text: "변동성(VIX) 선물 기반 상품은 선물을 매달 갈아타는 비용 때문에 구조상 장기 보유할수록 가치가 줄어드는 경향이 있습니다. 시장이 불안한 짧은 기간의 위험 회피·매매용이며 장기 보유에 적합하지 않습니다.",
+      text: "변동성(VIX) 선물 기반 상품은 구조가 특수합니다. 선물을 사는 상품은 매달 갈아타는 비용 때문에 장기 보유할수록 가치가 줄어드는 경향이 있고, 선물을 파는 상품은 시장이 급락하면 큰 손실을 볼 수 있습니다. 어느 쪽이든 장기 보유보다 단기 매매용에 가깝습니다.",
     });
   }
   if (t.tags.includes("defined-outcome")) {
@@ -266,7 +278,10 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
     reasons.push(`총보수 연 ${fmtFee(e.fee)}로 낮습니다(1,000만원당 연 ${feeWonPer10M(e.fee).toLocaleString("ko-KR")}원).`);
   }
   if (f.trust >= 80) {
-    reasons.push(`순자산 ${aumText(e)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
+    // † 순자산은 펀드 전체 합계라 ETF 클래스의 규모·청산 위험을 말해 주지 못하므로 거래대금만 근거로 쓴다.
+    reasons.push(e.aumScope === "fund"
+      ? `일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽습니다(순자산은 펀드 전체 합계라 규모 근거로 쓰지 않았습니다).`
+      : `순자산 ${aumText(e)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
   }
   if (s.groupSize > 1) {
     reasons.unshift(

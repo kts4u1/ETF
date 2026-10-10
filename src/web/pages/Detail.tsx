@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { EtfRecord } from "../../core/types";
-import { cautions, explain, structureNotes, taxNote, typeLine } from "../../core/explain";
+import { cautions, explain, indexTrackingSentence, structureNotes, taxNote, typeLine } from "../../core/explain";
 import { feeWonPer10M, fmtDate, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon, priceParts } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
 import { FX_NOTE, aumText, listingLine } from "../../core/market-view";
@@ -16,7 +16,7 @@ export function Detail({ code }: { code: string | null }) {
   const { byCode, snap, prefs, scoreOf, excludedBy } = useApp();
   const { data: series } = useSeries();
   const [range, setRange] = useState<RangeKey>("3Y");
-  const e = code ? byCode.get(code) : undefined;
+  const e = code ? (byCode.get(code) ?? byCode.get(code.toUpperCase())) : undefined; // 티커는 대소문자 구분 없이(#/etf/spy)
 
   if (!e) {
     return (
@@ -57,7 +57,7 @@ export function Detail({ code }: { code: string | null }) {
           ) : (
             <b>{Math.round(e.price).toLocaleString("ko-KR")}<small>원</small></b>
           )}
-          <span className="muted">전일 대비 {e.changeRate === null ? "-" : <span className={e.changeRate > 0 ? "up" : e.changeRate < 0 ? "down" : ""}>{fmtPercentUnit(e.changeRate, 2, true)}</span>}</span>
+          <span className="muted">전일 대비{overseas ? "(달러 기준)" : ""} {e.changeRate === null ? "-" : <span className={e.changeRate > 0 ? "up" : e.changeRate < 0 ? "down" : ""}>{fmtPercentUnit(e.changeRate, 2, true)}</span>}</span>
           <span className="muted">{fmtDate(m.asOf)} 종가{overseas ? " · 현지 거래일 기준" : ""}</span>
           {overseas && <span className="muted">{FX_NOTE}</span>}
         </div>
@@ -85,7 +85,7 @@ export function Detail({ code }: { code: string | null }) {
           <h2 id="what-h">이 ETF는 무엇인가요?</h2>
           <p>
             <b>{typeLine(e)}</b>에 투자하는 ETF입니다.
-            {e.tax.tags.includes("active") ? " 운용역이 종목을 골라 지수 대비 초과수익을 노립니다." : " 정해진 지수의 움직임을 따라가도록 운용됩니다."}
+            {indexTrackingSentence(e) ? ` ${indexTrackingSentence(e)}` : null}
           </p>
           {notes.length > 0 && <ul className="plain">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
           {e.description && (

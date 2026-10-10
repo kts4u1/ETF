@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { typeLine } from "../../core/explain";
 import { fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
-import { FX_NOTE, aumText, listingLine, matchRank } from "../../core/market-view";
+import { AUM_FUND_NOTE, FX_NOTE, aumText, listingLine, matchRank } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
@@ -18,7 +18,7 @@ const MAX = 4;
 type Row = { label: string; get: (e: EtfRecord) => number | null; fmt: (e: EtfRecord) => string; better: "high" | "low" };
 const ROWS: Row[] = [
   { label: "총보수 (연)", get: (e) => e.fee, fmt: (e) => fmtFee(e.fee), better: "low" },
-  { label: "순자산", get: (e) => e.aumEok, fmt: (e) => aumText(e), better: "high" },
+  { label: "순자산", get: (e) => (e.aumScope === "fund" ? null : e.aumEok), fmt: (e) => aumText(e), better: "high" },
   { label: "일평균 거래대금", get: (e) => e.m.avgValue20, fmt: (e) => fmtWon(e.m.avgValue20), better: "high" },
   { label: "최근 1년", get: (e) => e.m.ret.y1, fmt: (e) => fmtRatio(e.m.ret.y1, 1, true), better: "high" },
   { label: "3년 연평균", get: (e) => e.m.cagr3y, fmt: (e) => fmtRatio(e.m.cagr3y, 1, true), better: "high" },
@@ -34,7 +34,7 @@ export function Compare({ codes }: { codes: string[] }) {
   const { data: series } = useSeries();
   const [range, setRange] = useState<RangeKey>("3Y");
   const [q, setQ] = useState("");
-  const picked = codes.map((c) => byCode.get(c)).filter((e): e is EtfRecord => !!e).slice(0, MAX);
+  const picked = codes.map((c) => byCode.get(c) ?? byCode.get(c.toUpperCase())).filter((e): e is EtfRecord => !!e).slice(0, MAX);
 
   const idx = useMemo(
     () => (series && picked.length ? indexedSeries(series, picked.map((p) => p.code), RANGES[range]) : null),
@@ -169,6 +169,7 @@ export function Compare({ codes }: { codes: string[] }) {
               </table>
             </div>
             <p className="hint">‘우위’는 해당 행에서 화면에 보이는 값이 가장 유리한 ETF입니다(값이 모두 같으면 표시하지 않음). 행마다 기준이 다르므로 종합 판단은 직접 하세요.</p>
+            {picked.some((p) => p.aumScope === "fund") && <p className="hint">{AUM_FUND_NOTE} 그래서 순자산 행의 ‘우위’ 표시에서는 † 항목을 제외합니다.</p>}
             {hasOverseas && <FxNote>해외(미국) 상장 ETF의 순자산·거래대금·수익률·변동성·최대낙폭은 {FX_NOTE.replace("원화 환산: ", "")} 기준의 원화 환산값이고, 괴리율은 해외 상장에는 제공하지 않아 ‘-’로 둡니다.</FxNote>}
           </section>
         </>
