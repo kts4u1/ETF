@@ -101,7 +101,8 @@ show(
     return (
       (/\bInverse\b|\bBear\b|-\dx/i.test(n) && !t.tags.includes("inverse")) ||
       (/Buffer|Floor\b/i.test(n) && !t.tags.includes("defined-outcome")) ||
-      (/Covered[- ]Call|BuyWrite|Premium Income|Option Income|YieldMax/i.test(n) && !t.tags.includes("covered-call") && i.row.cat !== "Defined Outcome") ||
+      // 버퍼 상품은 이름에 Premium Income 이 있어도 커버드콜이 아니라 버퍼·목표수익으로 둔다
+      (/Covered[- ]Call|BuyWrite|Premium Income|Option Income|YieldMax/i.test(n) && !t.tags.includes("covered-call") && !t.tags.includes("defined-outcome")) ||
       (/\bVIX\b/i.test(n) && !t.tags.includes("volatility"))
     );
   }),

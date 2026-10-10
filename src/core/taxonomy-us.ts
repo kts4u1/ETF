@@ -151,8 +151,6 @@ interface CatRule {
   region?: Region;
   /** 이름에서 테마를 못 찾았을 때 쓰는 폴백 테마 */
   theme?: string;
-  /** 폴백 테마가 광범위 지수 이름인지 */
-  broad?: boolean;
   /** 채권: 카테고리의 테마가 이름보다 우선(종합채권처럼 이름이 오히려 오해를 부르는 경우) */
   catFirst?: boolean;
 }
@@ -324,8 +322,6 @@ interface ClassCtx {
   cls: Cls;
   /** 변동성(VIX) 선물 상품 */
   vix: boolean;
-  /** 가상자산 관련 기업 주식 */
-  cryptoEquity: boolean;
 }
 
 function detectClass(cat: string | null, body: string): ClassCtx {
@@ -333,7 +329,7 @@ function detectClass(cat: string | null, body: string): ClassCtx {
   const vix = VIX_RE.test(body);
   const coin = CRYPTO_COIN.test(body);
   const cryptoEquity = coin && CRYPTO_EQUITY.test(body);
-  const out = (cls: Cls): ClassCtx => ({ cls, vix, cryptoEquity: cls === "equity" && (cryptoEquity || rule?.theme === "가상자산 관련주") });
+  const out = (cls: Cls): ClassCtx => ({ cls, vix });
 
   if (vix) return out("equity");
   if (rule) {
@@ -380,7 +376,7 @@ const THEMES: { label: string; re: RegExp }[] = [
   { label: "AI·빅테크", re: /Artificial Intelligence|\bAI\b(?![- ](?:Enhanced|Powered|Managed|Driven))|Machine Learning|Big Data|Cloud|Software|SaaS|Cyber|Internet|Metaverse|Data Center|Quantum|Hyperscale|Magnificent|Mag ?7\b|FANG|Big Tech|Computing|Information Technology|Technology|\bTech\b|Gaming|Video Games?|Digital Economy/i },
   { label: "소비·미디어", re: /Consumer|Retail|Restaurant|Food|Beverage|Apparel|Luxury|Leisure|Entertainment|Media|Travel|Hotel|Casino|E-?Commerce|Streaming|Communication|Telecom|Staples|Discretionary|Cannabis|Sports Betting|Gambling/i },
   { label: "건설·산업재", re: /Industrial|Construction|Home ?Build|Materials|Chemical|Steel|Machinery|Engineering|Transportation|Logistics|Supply Chain|Airlines?|Railroad|Packaging|Building Products|Producer Durables|Infrastructure/i },
-  { label: "금속·광업", re: /Gold|Silver|Platinum|Palladium|Copper|Nickel|Metals?\b|Mining|Miners?|Rare Earth|Explorers?/i },
+  { label: "금속·광업", re: /\bGold\b|\bSilver\b|Platinum|Palladium|Copper|Nickel|Metals?\b|Mining|Miners?|Rare Earth|Explorers?/i },
   { label: "농업·식량", re: /Agribusiness|Agricultur|Farm|Food Security|Fertilizer/i },
   { label: "혁신·신기술", re: /Innovati|Disrupt|Next Gen|Frontier|Exponential|Revolution|Breakthrough|Transformational|Megatrend|Supercycle/i },
   { label: "배당·가치", re: /Dividend|\bDivs?\b|Aristocrat|Achievers|Value|Cash Cows?|Equity Income|Shareholder Yield|Preferred/i },
@@ -407,7 +403,7 @@ const COUNTRIES: { re: RegExp; label: string; region: Region }[] = [
   { re: /Japan|Nikkei|TOPIX|JPX/i, label: "일본 대표", region: "JP" },
   { re: /China|Chinese|Hang Seng|HSCEI|\bCSI\b|A-Shares|Hong Kong|Shanghai|Shenzhen/i, label: "차이나 대표", region: "CN" },
   { re: /Nifty ?50|India 50/i, label: "인도 Nifty50", region: "IN" },
-  { re: /India|Sensex/i, label: "인도 대표", region: "IN" },
+  { re: /\bIndia(?:n)?\b|Sensex/i, label: "인도 대표", region: "IN" },
   { re: /Vietnam/i, label: "베트남 대표", region: "VN" },
   { re: /Korea|KOSPI/i, label: "한국 대표", region: "KR" },
   { re: /Taiwan/i, label: "대만 대표", region: "GLOBAL" },
@@ -449,7 +445,7 @@ const COUNTRIES: { re: RegExp; label: string; region: Region }[] = [
 /** "ex-China", "ex US", "ex-Technology" 같은 제외 표기는 그 나라·업종 펀드라는 뜻이 아니다. */
 const stripExclusions = (s: string) => s.replace(/\b(?:ex[- ]|excluding |without )(?:the )?(?:U\.S\.A?\.?|United States|[A-Za-z]+)/gi, " ").replace(/\s+/g, " ");
 
-const GLOBAL_WORDS = /Emerging|Frontier|\bEM\b|Global|World|International|\bIntl\b|Developed|EAFE|ACWI|All[- ]Country|Foreign|Kokusai|Worldwide|Asia|Pacific/i;
+const GLOBAL_WORDS = /Emerging|Frontier Markets?|\bEM\b|Global|World|International|\bIntl\b|Developed|EAFE|ACWI|All[- ]Country|Foreign|Kokusai|Worldwide|Asia|Pacific/i;
 const US_WORDS = /\bU\.?S\.?A?\b|United States|America|S&P|Nasdaq|\bDow\b|Russell|Wilshire|Wall Street|Magnificent|Treasur|Select Sector/i;
 
 function detectEquityRegion(body: string, rule: CatRule | null): Region {
@@ -513,32 +509,31 @@ function underlyingOfBody(body: string): string | null {
   return null;
 }
 
-/** 개별 종목 → 테마. 이름만으로는 알 수 없는 기업의 업종을 알려 주는 작은 표(티커·회사명, 소문자). */
+/**
+ * 개별 종목 → 테마. 이름만으로는 알 수 없는 기업의 업종을 알려 주는 작은 표(티커·회사명, 소문자).
+ * 레버리지·옵션인컴 상품이 많이 걸리는 종목 위주이고, 표에 없는 종목은 테마가 비는 것으로 끝난다(감사 스크립트가 목록을 보고).
+ */
 const STOCK_THEME: Record<string, string> = {};
 const addStockTheme = (theme: string, keys: string) => {
-  for (const k of keys.split(",")) STOCK_THEME[k.trim().toLowerCase()] = theme;
+  for (const raw of keys.split(",")) {
+    const k = raw.trim().toLowerCase();
+    // 같은 종목을 두 테마에 넣으면 나중 것이 조용히 이기므로 만들 때 바로 막는다.
+    if (STOCK_THEME[k] !== undefined) throw new Error(`개별 종목 테마 표에 ${k} 가 중복됩니다`);
+    STOCK_THEME[k] = theme;
+  }
 };
-addStockTheme("반도체", "nvda,nvidia,amd,advanced micro devices,avgo,broadcom,mu,micron,tsm,tsmc,intc,intel,arm,qcom,qualcomm,mrvl,lrcx,amat,klac,asml,txn,mpwr,alab,wdc,sndk,stx,mchp,nxpi,swks,adi,ter,lite,cohr,aaoi,rmbs,smtc,on,crdo,skha,sk hynix,samsung,gfs");
-addStockTheme("전기차·자동차", "tsla,tesla,rivn,rivian,lcid,lucid,nio,gm,f");
-addStockTheme("AI·빅테크", "aapl,apple,msft,microsoft,amzn,amazon,googl,goog,google,alphabet,meta,nflx,netflix,pltr,palantir,orcl,oracle,crm,salesforce,snow,snowflake,crwd,crowdstrike,adbe,adobe,ibm,smci,shop,shopify,crwv,nbis,u,net,ddog,now,rddt,reddit,rblx,roblox,app,pypl,paypal,sq,block,abnb,airbnb,dash,doordash,ionq,qbts,rgti,qubt,soun,bbai,iren,cbrs,ai,path,pins,snap,twlo,zs,okta,mdb,hubs,team,wday,intu,panw,uber,lyft");
-addStockTheme("가상자산 관련주", "coin,coinbase,mstr,microstrategy,strategy,mara,riot,hut,clsk,cifr,bmnr,hood,robinhood,crcl,glxy,btbt,bitf,wulf,corz,sbet");
-addStockTheme("바이오·헬스케어", "lly,eli lilly,lilly,nvo,novo nordisk,unh,unitedhealth,pfe,mrna,jnj,abbv,mrk,vrtx,regn,hims,tem");
-addStockTheme("금융", "jpm,bac,wfc,gs,ms,v,visa,ma,mastercard,brk,brkb,berkshire,afrm,upst,sofi,nu,bx,kkr,schw");
-addStockTheme("방산·우주", "ba,boeing,lmt,lockheed,rtx,noc,gd,avav,ktos,rklb,lunr,rdw,asts,pl,joby,achr,rcat,onds");
-addStockTheme("원전·에너지", "xom,exxon,cvx,chevron,oklo,smr,nne,ceg,vst,tln,uec,uuuu,ccj,leu,fslr,enph,plug,bloom,nrg,sedg,vrt");
-addStockTheme("소비·미디어", "wmt,walmart,cost,costco,dis,disney,nke,nike,sbux,starbucks,mcd,ko,pep,lulu,cmg,celh,duol,spot,rost,tgt,gme");
-addStockTheme("금속·광업", "nem,newmont,fcx,freeport,aem,wpm,hl,aa,mp,cde,pagm");
-addStockTheme("건설·산업재", "cat,de,ge,hon,aptv,tel,aph,etn,aal,dal,ual,luv");
-addStockTheme("AI·빅테크", "baba,bidu,grab,apld,csco,dell,anet,keys,bb,fig,cdns,cien,hpe");
-addStockTheme("소비·미디어", "pdd,jd,meli,djt,dkng,cvna,echo");
-addStockTheme("반도체", "skhy,axti,nvts,aehr,amkr,entg,fn,form,mtsi,glw,onto,coherent,lite");
-addStockTheme("원전·에너지", "gev,eose,be,oklo,nne");
-addStockTheme("금융", "futu,xyz,figr");
-addStockTheme("금속·광업", "vale,usar,crml");
+addStockTheme("반도체", "nvda,nvidia,amd,advanced micro devices,avgo,broadcom,mu,micron,tsm,tsmc,intc,intel,arm,qcom,qualcomm,mrvl,lrcx,amat,klac,asml,txn,mpwr,alab,wdc,sndk,stx,mchp,nxpi,swks,adi,ter,lite,cohr,aaoi,rmbs,smtc,on,crdo,skha,skhy,sk hynix,samsung,gfs,axti,nvts,aehr,amkr,entg,fn,form,mtsi,glw,onto");
+addStockTheme("전기차·자동차", "tsla,tesla,rivn,rivian,lcid,lucid,nio,gm,f,xpev,li,byd");
+addStockTheme("AI·빅테크", "aapl,apple,msft,microsoft,amzn,amazon,googl,goog,google,alphabet,meta,nflx,netflix,pltr,palantir,orcl,oracle,crm,salesforce,snow,snowflake,crwd,crowdstrike,adbe,adobe,ibm,smci,shop,shopify,crwv,nbis,u,net,ddog,now,rddt,reddit,rblx,roblox,app,pypl,paypal,sq,block,abnb,airbnb,dash,doordash,ionq,qbts,rgti,qubt,soun,bbai,iren,cbrs,path,pins,snap,twlo,zs,okta,mdb,hubs,team,wday,intu,panw,uber,lyft,baba,bidu,grab,apld,csco,dell,anet,keys,bb,fig,cdns,cien,hpe");
+addStockTheme("가상자산 관련주", "coin,coinbase,mstr,microstrategy,strategy,mara,riot,hut,clsk,cifr,bmnr,hood,robinhood,crcl,glxy,btbt,bitf,wulf,corz,sbet,asst,purr,blsh,btdr,gemi");
+addStockTheme("바이오·헬스케어", "lly,eli lilly,lilly,nvo,novo nordisk,unh,unitedhealth,pfe,mrna,jnj,abbv,mrk,vrtx,regn,hims,tem,isrg");
+addStockTheme("금융", "jpm,bac,wfc,gs,ms,v,visa,ma,mastercard,brk,brkb,berkshire,afrm,upst,sofi,nu,bx,kkr,schw,futu,xyz,figr");
+addStockTheme("방산·우주", "ba,boeing,lmt,lockheed,rtx,noc,gd,ge,avav,ktos,rklb,lunr,rdw,asts,pl,joby,achr,rcat,onds");
+addStockTheme("원전·에너지", "xom,exxon,cvx,chevron,oklo,smr,nne,ceg,vst,tln,uec,uuuu,ccj,leu,fslr,enph,plug,bloom,nrg,sedg,gev,eose,be");
+addStockTheme("소비·미디어", "wmt,walmart,cost,costco,dis,disney,nke,nike,sbux,starbucks,mcd,ko,pep,lulu,cmg,celh,duol,spot,rost,tgt,gme,pdd,jd,meli,djt,dkng,cvna,echo");
+addStockTheme("금속·광업", "nem,newmont,fcx,freeport,aem,wpm,hl,aa,mp,cde,pagm,vale,usar,crml");
+addStockTheme("건설·산업재", "cat,de,hon,aptv,tel,aph,etn,vrt,aal,dal,ual,luv");
 addStockTheme("2차전지", "qs,alb,sldp");
-addStockTheme("전기차·자동차", "xpev,li,byd");
-addStockTheme("가상자산 관련주", "asst,purr,blsh,btdr,gemi,sbet,bmnr");
-addStockTheme("바이오·헬스케어", "isrg,hims,tem");
 
 /** 미국이 아닌 나라의 기업(ADR·해외 상장)을 기초로 한 상품의 지역. 이 표에 없으면 미국으로 본다. */
 const STOCK_REGION: Record<string, Region> = {};
@@ -729,6 +724,14 @@ function groupKeyOf(n: string, symbol: string, tags: StructureTag[], leverage: n
 const PHYSICAL_METAL_NAME = /Gold|Silver|Platinum|Palladium|Precious|Bullion/i;
 const FUTURES_WORDS = /Futures?\b|Strategy|DB |Bloomberg|Index|Leveraged|Ultra|\b[23]x\b|Daily|Roll|Contango|Optimum Yield|GSCI|\bLP\b|K-1/i;
 
+/**
+ * 미국 상장 ETF 한 종목을 국내 분류기와 같은 `Taxonomy` 로 분류한다.
+ *
+ * 순서: 브랜드·신탁 이름을 뗀 본문을 만들고 → 레버리지 배수 → 자산군(카테고리 우선, 없으면 이름) → 지역 → 테마(이름의
+ * 섹터·전략 낱말이 먼저, 대표 지수·국가는 그다음, 카테고리가 마지막 폴백) → 구조 태그 → groupKey 순으로 정한다.
+ * 확실하지 않으면 테마를 비우고(null) 묶지 않는 쪽으로 기운다: 틀린 테마·거짓 묶음은 화면에서 다른 ETF 를 가리거나
+ * 잘못된 경고를 띄우지만, 비어 있는 것은 무해하다.
+ */
 export function classifyUs(info: UsEtfInfo): Taxonomy {
   const name = info.name;
   const n = clean(name);
