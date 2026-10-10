@@ -14,6 +14,11 @@ export type AssetClass =
   | "real-asset" // 리츠·인프라
   | "fx"; // 통화
 
+/** 상장 시장. 국내(KRX)와 미국(NYSE Arca·Nasdaq·Cboe 등). 이전 스냅샷에는 필드가 없고, 없으면 국내로 본다. */
+export type Market = "KR" | "US";
+/** 화면·추천 설정의 시장 선택. all 은 국내와 해외를 한 목록에서 함께 본다. */
+export type MarketFilter = "all" | Market;
+
 export type Region = "KR" | "US" | "CN" | "JP" | "IN" | "VN" | "EU" | "GLOBAL" | "NA";
 
 /** 상품 구조상의 특징. 위험/비용/기대수익 해석에 영향을 주는 것들만 둔다. */
@@ -88,18 +93,28 @@ export interface Metrics {
   mom12_1: number | null;
   /** 종가 / 200일 이동평균 - 1 */
   trend200: number | null;
-  /** 최근 20거래일 평균 거래대금(원) */
+  /** 최근 20거래일 평균 거래대금(원). 해외 상장은 거래일 환율로 환산한 값 */
   avgValue20: number | null;
 }
 
 export interface EtfRecord {
+  /** 국내는 6자리 종목코드, 해외(미국)는 티커(1~5자 영문 대문자) */
   code: string;
   name: string;
+  /** 상장 시장. 없으면 국내(KR)로 본다 — 이전 스냅샷과 호환. 읽을 때는 core/market.ts 의 marketOf 를 쓴다. */
+  market?: Market;
+  /** 해외 상장: 거래소 이름(예: "NYSE Arca"). 국내는 없음 */
+  exchange?: string | null;
+  /** 해외 상장: 현지 통화 가격(USD). 없으면 price 가 곧 원화 가격이다 */
+  priceNative?: number | null;
+  /** 해외 상장: 원천(모닝스타)이 붙인 영문 분류(예: "Large Blend"). 분류 규칙의 근거로 쓰고 화면에는 참고로만 보여준다 */
+  category?: string | null;
   issuer: string | null;
+  /** 원화 가격. 해외 상장은 현지 통화 가격에 기준일 환율을 곱한 값(USD/KRW) */
   price: number;
   /** 당일 등락률 % */
   changeRate: number | null;
-  /** 순자산총액(억원) */
+  /** 순자산총액(억원). 해외 상장은 달러 순자산에 기준일 환율을 곱해 환산한 값 */
   aumEok: number;
   /** 총보수 % (연) */
   fee: number | null;
@@ -117,8 +132,12 @@ export interface Snapshot {
   version: 1;
   /** 스냅샷 생성 시각(ISO) */
   generatedAt: string;
-  /** 시세 기준일 YYYYMMDD */
+  /** 시세 기준일 YYYYMMDD — 국내 상장 ETF 시세의 최신일(백테스트의 상장폐지 판정 기준이므로 해외 시세로 바꾸지 않는다) */
   asOf: string;
+  /** 해외 상장 ETF 시세의 최신일. 해외 ETF가 없으면 없음 */
+  asOfUs?: string;
+  /** 해외 ETF 원화 환산에 쓴 최신 환율(원/달러)과 그 날짜 */
+  fxUsdKrw?: { rate: number; date: string };
   source: string;
   etfs: EtfRecord[];
 }
@@ -145,6 +164,8 @@ export interface Preferences {
   includeCoveredCall: boolean;
   /** 상장 1년 미만 포함 (기본 제외) */
   includeYoung: boolean;
+  /** 상장 시장: 전체(국내+해외) / 국내 상장만 / 해외 상장만 */
+  market: MarketFilter;
   /** 순자산 하한(억원) */
   minAumEok: number;
   /** 총보수 상한 % (null=제한 없음) */
@@ -173,6 +194,7 @@ export interface Scored {
 
 /** 후보에서 제외된 이유의 종류. UI 에서 사유별로 묶어 보여줄 때 쓴다. */
 export type ExclusionCode =
+  | "market"
   | "asset-class"
   | "leveraged"
   | "covered-call"

@@ -1,3 +1,4 @@
+import { MARKET_LABEL, marketOf } from "./market";
 import type {
   EtfRecord,
   Exclusion,
@@ -106,6 +107,7 @@ export const DEFAULT_PREFS: Preferences = {
   profile: "balanced",
   horizon: "mid",
   assetClasses: null,
+  market: "all",
   includeLeveraged: false,
   includeCoveredCall: true,
   includeYoung: false,
@@ -134,6 +136,7 @@ export const volOf = (e: EtfRecord) => e.m.vol3y ?? e.m.vol1y;
 export const mddOf = (e: EtfRecord) => e.m.mdd3y ?? e.m.mdd1y ?? e.m.mddAll;
 
 export const EXCLUSION_LABEL: Record<ExclusionCode, string> = {
+  market: "선택하지 않은 상장 시장",
   "asset-class": "선택하지 않은 자산군",
   leveraged: "레버리지·인버스",
   "covered-call": "커버드콜",
@@ -153,6 +156,7 @@ export interface Ineligible {
 /** 후보에서 제외해야 하면 사유(코드 + 사람이 읽는 문장)를, 통과하면 null 을 돌려준다 */
 export function checkEligibility(e: EtfRecord, p: Preferences): Ineligible | null {
   const no = (code: ExclusionCode, reason: string): Ineligible => ({ code, reason });
+  if (p.market !== "all" && marketOf(e) !== p.market) return no("market", `${MARKET_LABEL[marketOf(e)]} ETF — 선택한 시장(${MARKET_LABEL[p.market]})이 아님`);
   if (p.assetClasses && !p.assetClasses.includes(e.tax.assetClass)) return no("asset-class", "선택하지 않은 자산군");
   if (isLeveraged(e) && !p.includeLeveraged) return no("leveraged", "레버리지·인버스 상품 (설정에서 포함 가능)");
   if (e.tax.tags.includes("covered-call") && !p.includeCoveredCall) return no("covered-call", "커버드콜 상품 (설정에서 포함 가능)");

@@ -90,6 +90,24 @@ describe("checkEligibility", () => {
     expect(why(makeEtf({ fee: 0.9 }), { ...p, maxFee: 0.5 })).toMatch(/총보수/);
     expect(why(makeEtf({ fee: 0.3 }), { ...p, maxFee: 0.5 })).toBeNull();
   });
+  it("상장 시장 필터: 기본은 전체, 선택한 시장이 아니면 제외하고 사유 코드는 market", () => {
+    const kr = makeEtf();
+    const us = makeEtf({ code: "SPY", name: "SPDR S&P 500 ETF Trust", market: "US" });
+    expect(p.market).toBe("all");
+    expect(why(kr, p)).toBeNull();
+    expect(why(us, p)).toBeNull();
+    expect(codeOf(us, { ...p, market: "KR" })).toBe("market");
+    expect(why(us, { ...p, market: "KR" })).toMatch(/해외\(미국\) 상장 ETF.*국내 상장/);
+    expect(codeOf(kr, { ...p, market: "US" })).toBe("market");
+    expect(why(us, { ...p, market: "US" })).toBeNull();
+    // market 필드가 없는 이전 스냅샷 레코드는 국내로 취급한다
+    expect(why(makeEtf(), { ...p, market: "KR" })).toBeNull();
+  });
+  it("시장 필터는 다른 게이트보다 먼저 적용된다(사유가 시장으로 보고됨)", () => {
+    const smallUs = makeEtf({ market: "US", aumEok: 10 });
+    expect(codeOf(smallUs, { ...p, market: "KR" })).toBe("market");
+    expect(codeOf(smallUs, { ...p, market: "US" })).toBe("small-aum");
+  });
   it("자산군 필터", () => {
     expect(why(makeEtf({ name: "KODEX 국고채10년" }), { ...p, assetClasses: ["kr-equity"] })).toMatch(/자산군/);
   });
