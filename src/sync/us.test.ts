@@ -14,6 +14,7 @@ import {
   buildFxTable,
   buildUsRecord,
   exchangeLabel,
+  fetchNasdaqList,
   fxLatest,
   fxRateOn,
   isEtnName,
@@ -88,6 +89,39 @@ describe("parseNasdaqList", () => {
 
   it("symbol 필드를 읽지 못하면(필드 이름이 바뀜) 빈 목록을 만들지 않고 오류", () => {
     expect(() => parseNasdaqList(wrap([{ ticker: "SPY" }, { ticker: "QQQ" }, { ticker: "IWM" }]), 1)).toThrow(/symbol/);
+  });
+});
+
+describe("fetchNasdaqList", () => {
+  /** 서로 다른 4글자 티커 n 개를 가진 나스닥 응답 */
+  const payload = (n: number) => ({
+    data: { dataAsOf: "10/9/2026", data: { rows: Array.from({ length: n }, (_, i) => ({ symbol: String.fromCharCode(65 + (i % 26), 65 + (Math.floor(i / 26) % 26), 65 + (Math.floor(i / 676) % 26), 65), companyName: `Fund ${i}` })) } },
+  });
+  const retry = { attempts: 3, baseMs: 1 };
+
+  it("브라우저 UA 로 요청하고 응답을 파싱한다", async () => {
+    let init: RequestInit | undefined;
+    const r = await fetchNasdaqList(async (_u, i) => {
+      init = i;
+      return Response.json(payload(1200));
+    }, retry);
+    expect(r.rows).toHaveLength(1200);
+    expect((init?.headers as Record<string, string>)["User-Agent"]).toContain("Mozilla/5.0");
+  });
+
+  it("일시적 오류(503)는 재시도하고, 403 은 즉시 HttpError", async () => {
+    let n = 0;
+    const flaky = async () => (++n < 2 ? new Response("", { status: 503 }) : Response.json(payload(1200)));
+    await expect(fetchNasdaqList(flaky, retry)).resolves.toMatchObject({ total: 1200 });
+    expect(n).toBe(2);
+
+    n = 0;
+    await expect(fetchNasdaqList(async () => (n++, new Response("", { status: 403 })), retry)).rejects.toMatchObject({ status: 403 });
+    expect(n).toBe(1);
+  });
+
+  it("행이 너무 적은 응답(잘림·형식 변경)은 오류", async () => {
+    await expect(fetchNasdaqList(async () => Response.json(payload(50)), retry)).rejects.toThrow(/형식이 예상과 다릅니다/);
   });
 });
 
