@@ -116,8 +116,9 @@ export function extractUsBrand(name: string): string {
   }
   const i = name.search(/\s/);
   const first = i > 0 ? name.slice(0, i) : "";
-  // "2x Cardano ETF" 의 "2x" 는 브랜드가 아니다.
-  return MULT_RE.test(first) ? "" : first;
+  // "2x Cardano ETF" 의 "2x", "Solana ETF" 의 "Solana" 는 브랜드가 아니다(뒤에 상품 일반어만 남는 경우).
+  if (MULT_RE.test(first) || /^(?:ETFs?|Fund|Trust|Shares)?$/i.test(name.slice(i + 1).trim())) return "";
+  return first;
 }
 
 const TRUST_FRAGMENT = /^(?:ETFs? )?(?:Series Trust|Fund Trust|Trust|Series|Funds|Inc\.?)(?: (?:I{1,3}|IV|V))?(?= |$)/i;
@@ -310,12 +311,12 @@ const CRYPTO_EQUITY = /Miners?|Mining|Equity|Stocks?|Compan(?:y|ies)|Corporation
 const TBILL_RE = /T-?Bills?\b|Treasury Bills?\b|\b[0-3]-[1-3] Months?\b|\b(?:3|6|12) Months?\b|Six Month|Money Market|Ultra[- ]Short|Ultra-?short (?:Income|Bond|Fixed|Duration|Government|Treasury)|Floating Rate Treasury|Cash Management/i;
 const MUNI_RE = /Muni(?:cipal)?s?\b|Tax[- ]Exempt|Tax[- ]Aware|AMT-Free/i;
 const BOND_NAME_RE =
-  /\bBonds?\b|Treasur(?:y|ies)|\bTIPS\b|Fixed[- ]Income|Muni(?:cipal)?s?\b|Aggregate|Credit\b|High[- ]Yield\b(?!.*(?:Equity|Dividend))|\bDebt\b|\bNotes?\b|Floating[- ]Rate|Mortgage(?! REIT)|\bMBS\b|\bCLO\b|iBonds|BulletShares|Convertible|Income Securities|Strategic Income|Core Plus|Senior Loan|Bank Loan|Sukuk|Tax-Exempt|Inflation-(?:Protected|Linked)|\b(?:Short|Low|Limited|Intermediate|Target|Defined) Duration\b|Short[- ]Term (?:Income|Tax|Corporate|Government|Municipal|Fixed)|Multi-?Sector Income/i;
+  /\bBonds?\b|Treasur(?:y|ies)|\bTIPS\b|Fixed[- ]Income|Muni(?:cipal)?s?\b|Aggregate|Credit\b|High[- ]Yield\b(?!.*(?:Equity|Dividend))|\bDebt\b|\bNotes?\b|Floating[- ]Rate|Mortgage(?! REIT| Real Estate)|\bMBS\b|\bCLO\b|iBonds|BulletShares|Convertible|Income Securities|Strategic Income|Core Plus|Senior Loan|Bank Loan|Sukuk|Tax-Exempt|Inflation-(?:Protected|Linked)|\b(?:Short|Low|Limited|Intermediate|Target|Defined) Duration\b|Short[- ]Term (?:Income|Tax|Corporate|Government|Municipal|Fixed)|Short[- ]Maturity|Multi-?Sector Income/i;
 const COMMODITY_NAME_RE =
   /\bGold\b|\bSilver\b|\bPlatinum\b|\bPalladium\b|\bOil\b|Crude|\bBrent\b|Natural Gas|Gasoline|\bCopper\b|Commodit(?:y|ies)|\bWheat\b|\bCorn\b|\bSugar\b|\bCoffee\b|\bCocoa\b|Agricultur|Bullion|Precious Metals?|Industrial Metals?|Base Metals?|Carbon (?:Allowances|Credit)/i;
 const COMMODITY_EQUITY_RE =
-  /Miners?|Mining|Equity|Stocks?|Compan(?:y|ies)|Explor|Production|Producers?|Equipment|Services|Midstream|Pipeline|Refin|Royalty|Streaming|Strategic Metals|Enhanced Income|Infrastructure|Select Sector/i;
-const FX_NAME_RE = /CurrencyShares|Currency (?:Trust|Strategy)|Dollar Index|US Dollar|\bYen\b|\bYuan\b|Swiss Franc|British Pound|Canadian Dollar|Australian Dollar|Dollar (?:Bullish|Bearish)|\bEuro$/i;
+  /Miners?|Mining|Equity|Stocks?|Compan(?:y|ies)|Explor|Production|Producers?|Equipment|Services|Midstream|Pipeline|Refin|Royalty|Streaming|Strategic Metals|Enhanced Income|Infrastructure|Select Sector|Oil & Gas|Exp\.|Prod\./i;
+const FX_NAME_RE = /CurrencyShares|Currency (?:Trust|Strategy)|Dollar Index|USD Index|US Dollar|\bYen\b|\bYuan\b|Swiss Franc|British Pound|Canadian Dollar|Australian Dollar|Dollar (?:Bullish|Bearish)|\bEuro$/i;
 const REAL_ASSET_NAME_RE = /\bREITs?\b|Real Estate|Realty|Property|Infrastructure/i;
 const MULTI_NAME_RE = /Allocation|Target Date|LifePath|Balanced|Multi-?Asset|\b60\/40\b|Managed Futures|Risk Parity|All[- ]Weather|Retirement Income|Return Stacked/i;
 
@@ -392,7 +393,7 @@ const BROAD_INDEXES: { label: string; re: RegExp; us?: boolean }[] = [
   { label: "나스닥100", re: /Nasdaq[- ]?100|\bQQQ\b|\bNDX\b|\bN100\b|Nasdaq/i, us: true },
   { label: "S&P500", re: /S&P ?500|\bSP ?500\b|S&P US 500/i, us: true },
   { label: "다우존스", re: /Dow Jones Industrial|Dow ?30|\bDJIA\b/i, us: true },
-  { label: "미국 소형주", re: /Small[- ]?Cap|Russell 2000|S&P 600|Micro[- ]?Cap/i, us: true },
+  { label: "미국 소형주", re: /Small[- ]?Cap|Russell ?2000|S&P 600|Micro[- ]?Cap/i, us: true },
   { label: "미국 중형주", re: /Mid[- ]?Cap|Russell Midcap|Russell 2500|S&P 400|\bSMID\b/i, us: true },
   { label: "미국 전체시장", re: /Total (?:Stock )?Market|Total U\.?S\.? |Broad Market|Russell 3000|Wilshire 5000|All[- ]?Cap|U\.?S\.? (?:Equity|Stock)(?: Market)? Index/i, us: true },
   { label: "미국 대형주", re: /Large[- ]?Cap|Russell 1000|S&P 100\b|Mega[- ]?Cap|MSCI USA\b/i, us: true },
@@ -578,6 +579,8 @@ function detectEquityTheme(
   if (!opts.definedOutcome) {
     for (const t of THEMES) if (t.re.test(s)) return { theme: t.label, broad: false };
   }
+  // "All World ex US", "Developed World ex-US" 처럼 미국을 뺀 전 세계 지수
+  if (opts.region === "GLOBAL" && !/Emerging/i.test(raw) && /\bex[- ]?(?:U\.?S\.?A?|United States)\b/i.test(raw)) return { theme: "선진국(미국 제외)", broad: true };
   for (const b of BROAD_INDEXES) {
     if (b.us && opts.region !== "US") continue;
     if (b.re.test(s)) return { theme: b.label, broad: true };
@@ -823,7 +826,7 @@ export function classifyUs(info: UsEtfInfo): Taxonomy {
     const physical = /Grantor Trust/i.test(info.legalType ?? "") || /Physical/i.test(body) || (PHYSICAL_METAL_NAME.test(body) && !FUTURES_WORDS.test(body));
     futures = futures || !physical;
   }
-  if (assetClass === "fx" && /\bDB\b|Dollar Index/i.test(body)) futures = true;
+  if (assetClass === "fx" && /\bDB\b|Dollar Index|USD Index/i.test(body)) futures = true;
   if (assetClass === "crypto" && (info.symbol === "BITO" || /Bitcoin Strategy|Ether Strategy/i.test(body))) futures = true;
   if (futures) tags.push("futures");
   if (single || CONCENTRATED_RE.test(n)) tags.push("concentrated");
