@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./naver";
-import { NotFoundError, YahooClient, parseChart, parseFundInfo, ymdFromUnix, type FetchLike } from "./yahoo";
+import { NotFoundError, YahooClient, fetchChart, fetchFundInfo, parseChart, parseFundInfo, ymdFromUnix, type FetchLike } from "./yahoo";
 
 const utc = (y: number, m: number, d: number, h = 0, min = 0) => Date.UTC(y, m - 1, d, h, min) / 1000;
 
@@ -408,5 +408,15 @@ describe("YahooClient: 재시도와 404", () => {
     expect(u).toContain("events=div");
     expect(u).not.toContain("range=");
     expect(y.sessions()).toBe(0);
+  });
+});
+
+describe("모듈 함수 fetchChart / fetchFundInfo: 주입한 클라이언트를 쓴다", () => {
+  it("시세와 펀드 정보를 그 클라이언트의 fetch 로 받는다", async () => {
+    const y = fakeYahoo();
+    const client = new YahooClient({ fetch: y.fetchFn, retry: fast });
+    expect((await fetchChart("SPY", 1, 2, client)).close).toEqual([10]);
+    expect((await fetchFundInfo("SPY", client)).totalAssets).toBe(5);
+    expect(y.calls.length).toBeGreaterThan(0);
   });
 });

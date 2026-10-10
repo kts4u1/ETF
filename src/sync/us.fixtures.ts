@@ -84,7 +84,6 @@ export const list = (symbols: string[]): NasdaqList => ({
   etnExcluded: 0,
 });
 
-
 export interface Spec {
   shape?: Shape;
   /** 1개월·장기 시세 모두 404 */
@@ -124,4 +123,3 @@ export function makeDeps(symbols: string[], specs: Record<string, Spec>, over: P
   };
   return { deps, n };
 }
-
