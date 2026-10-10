@@ -1,5 +1,6 @@
 import { feeWonPer10M, fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
 import { roleOf, type Proposal } from "./portfolio";
+import { isOverseas } from "./market";
 import { HORIZONS, PROFILES, isLeveraged, volOf, mddOf } from "./scoring";
 import type { AssetClass, EtfRecord, Preferences, Region, Scored } from "./types";
 
@@ -51,11 +52,15 @@ export const RISK_LABEL = ["", "매우 낮음", "낮음", "보통", "높음", "�
 /**
  * 1~5 위험 등급. 레버리지·인버스는 무조건 5. 나머지는 최근 변동성(3년, 없으면 1년)으로 나눈다.
  * 임계값은 실제 ETF 변동성 분포(현금성 0.2%, 채권 5%, 혼합 11%, 해외주식 24%, 국내주식 38%)에 맞춰 잡았다.
+ * 변동성을 모를 때는 자산군으로 추정하되, 가상자산·변동성(VIX) 상품은 구조상 가격 변동이 매우 커서 5로 본다.
  */
 export function riskGrade(e: EtfRecord): 1 | 2 | 3 | 4 | 5 {
   if (isLeveraged(e)) return 5;
   const v = volOf(e);
-  if (v === null) return e.tax.assetClass === "cash" ? 1 : e.tax.assetClass === "bond" ? 2 : 4;
+  if (v === null) {
+    if (e.tax.assetClass === "crypto" || e.tax.tags.includes("volatility")) return 5;
+    return e.tax.assetClass === "cash" ? 1 : e.tax.assetClass === "bond" ? 2 : 4;
+  }
   if (v < 0.015) return 1;
   if (v < 0.07) return 2;
   if (v < 0.15) return 3;
@@ -68,7 +73,8 @@ export function riskGrade(e: EtfRecord): 1 | 2 | 3 | 4 | 5 {
 export function typeLine(e: EtfRecord): string {
   const t = e.tax;
   const parts: string[] = [];
-  parts.push(t.assetClass === "kr-equity" || t.assetClass === "global-equity"
+  // 지역을 모르면(NA) "- 주식" 대신 자산군 이름("해외 주식")을 쓴다
+  parts.push((t.assetClass === "kr-equity" || t.assetClass === "global-equity") && t.region !== "NA"
     ? `${REGION_LABEL[t.region]} 주식`
     : ASSET_CLASS_LABEL[t.assetClass]);
   if (t.theme) parts.push(t.broad ? `${t.theme} 지수` : `${t.theme} 테마`);
@@ -79,12 +85,22 @@ export function typeLine(e: EtfRecord): string {
 export function structureNotes(e: EtfRecord): string[] {
   const t = e.tax;
   const out: string[] = [];
+  if (isOverseas(e)) {
+    out.push(`미국${e.exchange ? `(${e.exchange})` : ""} 시장에 상장되어 달러로 거래되는 ETF입니다. 이 앱의 가격·순자산·거래대금·수익률은 원화로 환산한 값입니다.`);
+  }
+  if (t.assetClass === "crypto") out.push("비트코인·이더리움 같은 가상자산의 가격을 따라가도록 설계된 상품입니다.");
   if (t.tags.includes("leveraged")) out.push(`하루 수익률의 ${t.leverage}배를 따라가도록 설계된 상품입니다.`);
   if (t.tags.includes("inverse")) out.push(`지수가 내리면 이익, 오르면 손실이 나는 ${Math.abs(t.leverage) > 1 ? `${Math.abs(t.leverage)}배 ` : ""}반대 방향 상품입니다.`);
   if (t.tags.includes("covered-call")) out.push("주식을 보유하면서 콜옵션을 팔아 프리미엄을 분배금으로 받는 전략입니다. 상승폭은 제한되지만 분배금이 많습니다.");
   if (t.tags.includes("active")) out.push("펀드매니저가 지수와 다르게 종목을 고르는 액티브 상품입니다.");
   if (t.tags.includes("total-return")) out.push("분배금을 지급하지 않고 재투자해 복리로 불리는 TR(Total Return) 상품입니다.");
-  if (t.tags.includes("hedged")) out.push("환율 변동 영향을 줄이도록 환헤지(H)를 한 상품입니다.");
+  if (t.tags.includes("hedged")) {
+    out.push(isOverseas(e)
+      ? "통화 헤지가 표기된 상품이지만, 이 앱은 원화로 환산하므로 원/달러 환율 영향은 그대로 받습니다."
+      : "환율 변동 영향을 줄이도록 환헤지(H)를 한 상품입니다.");
+  }
+  if (t.tags.includes("defined-outcome")) out.push("정해진 기간 동안 옵션으로 손실의 일부를 막아 주는 대신 상승폭에 상한을 두는 버퍼·목표수익 구조의 상품입니다.");
+  if (t.tags.includes("volatility")) out.push("주식시장 변동성(VIX) 선물을 이용해, 시장이 불안할 때 오르도록 설계된 상품입니다.");
   if (t.tags.includes("synthetic")) out.push("실제 자산 대신 증권사와의 스왑 계약으로 지수를 추종하는 합성 상품입니다.");
   if (t.tags.includes("concentrated")) out.push("소수 종목에 집중 투자하는 상품입니다.");
   return out;
@@ -93,6 +109,9 @@ export function structureNotes(e: EtfRecord): string[] {
 /** 세금 안내(일반론). 세법은 바뀔 수 있으므로 단정하지 않고 확인을 권한다. */
 export function taxNote(e: EtfRecord): string {
   const t = e.tax;
+  if (isOverseas(e)) {
+    return "해외 상장 ETF는 국내 상장과 세금 체계가 다릅니다. 현행 기준으로 매매차익에는 양도소득세(연 250만원 공제 후 22%)가 붙어 본인이 신고·납부해야 하고, 분배금에는 배당소득세가 적용됩니다(현지 원천징수 포함).";
+  }
   const domesticEquity =
     t.assetClass === "kr-equity" &&
     !t.tags.some((x) => x === "leveraged" || x === "inverse" || x === "covered-call" || x === "synthetic");
@@ -141,11 +160,49 @@ export function cautions(e: EtfRecord): Caution[] {
   if (t.tags.includes("active")) {
     out.push({ level: "info", text: "액티브 ETF는 운용역에 따라 성과 편차가 크고 보수가 상대적으로 높은 편입니다." });
   }
-  if (!t.tags.includes("hedged") && ["global-equity", "bond", "commodity", "real-asset", "multi"].includes(t.assetClass) && t.region !== "KR" && t.region !== "NA") {
-    out.push({ level: "info", text: "환헤지가 없는 상품은 원/외화 환율에 따라 수익률이 달라집니다(원화 약세엔 유리, 강세엔 불리)." });
+  if (t.tags.includes("volatility")) {
+    out.push({
+      level: "high",
+      text: "변동성(VIX) 선물 기반 상품은 선물을 매달 갈아타는 비용 때문에 구조상 장기 보유할수록 가치가 줄어드는 경향이 있습니다. 시장이 불안한 짧은 기간의 위험 회피·매매용이며 장기 보유에 적합하지 않습니다.",
+    });
   }
-  if (t.tags.includes("hedged")) {
-    out.push({ level: "info", text: "환헤지(H) 상품은 환율 변동은 줄이지만 헤지 비용이 들고, 원화 약세로 인한 환차익은 얻지 못합니다." });
+  if (t.tags.includes("defined-outcome")) {
+    out.push({
+      level: "warn",
+      text: "정해진 기간 동안 손실의 일부를 막아 주는 대신 상승폭이 제한되는 구조입니다. 기간 중간에 사면 남은 버퍼와 상승 한도가 처음 설계와 달라지므로 운용사 공시로 현재 조건을 확인해야 합니다.",
+    });
+  }
+  if (t.assetClass === "crypto") {
+    const v = volOf(e);
+    const dd = mddOf(e);
+    const stats = [v !== null ? `연 변동성 ${fmtRatio(v, 0)}` : null, dd !== null ? `최대낙폭 ${fmtRatio(dd, 0)}` : null].filter(Boolean).join(", ");
+    out.push({
+      level: "warn",
+      text: `가상자산은 가격 변동이 매우 큰 자산입니다${stats ? `(이 ETF의 최근 ${stats})` : ""}. 짧은 기간에도 크게 오르내릴 수 있고, 과거의 변동 폭이 앞으로의 한계를 뜻하지 않습니다.`,
+    });
+  }
+  if (isOverseas(e)) {
+    // 해외 상장 ETF는 환헤지 태그가 없고 항상 환노출이다. 지역·자산군(현금성·통화·가상자산 포함)과 무관하게 안내한다.
+    out.push({
+      level: "info",
+      text: "원화 환산 기준이라 원/달러 환율 변동이 수익률·변동성·최대낙폭에 그대로 반영됩니다(원화 약세엔 유리, 강세엔 불리). 달러 가격이 그대로여도 환율에 따라 원화 수익이 달라집니다.",
+    });
+    out.push({
+      level: "info",
+      text: "현행 기준으로 매매차익에는 양도소득세(연 250만원 공제 후 22%)가 붙어 별도로 신고·납부해야 하고, 분배금에는 배당소득세가 적용됩니다. 세법은 바뀔 수 있으니 투자 전 확인하세요.",
+    });
+    out.push({
+      level: "info",
+      text: "달러로 거래되므로 매수할 때마다 환전이 필요하고(환전 수수료·스프레드 별도), 미국 시장은 한국 시간 밤~새벽에 열리며 휴장일도 국내와 다릅니다.",
+    });
+    out.push({ level: "info", text: "괴리율과 구성종목 겹침은 해외 상장 ETF에는 제공하지 않습니다(데이터 없음)." });
+  } else {
+    if (!t.tags.includes("hedged") && ["global-equity", "bond", "commodity", "real-asset", "multi"].includes(t.assetClass) && t.region !== "KR" && t.region !== "NA") {
+      out.push({ level: "info", text: "환헤지가 없는 상품은 원/외화 환율에 따라 수익률이 달라집니다(원화 약세엔 유리, 강세엔 불리)." });
+    }
+    if (t.tags.includes("hedged")) {
+      out.push({ level: "info", text: "환헤지(H) 상품은 환율 변동은 줄이지만 헤지 비용이 들고, 원화 약세로 인한 환차익은 얻지 못합니다." });
+    }
   }
 
   if (m.ret.y1 === null) {
@@ -186,9 +243,10 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
   const m = e.m;
   const reasons: string[] = [];
 
+  const basis = isOverseas(e) ? "분배금 보정·원화 환산 시세 기준" : "분배금 보정 시세 기준";
   if (f.ret >= 70) {
     const parts = [m.ret.y1 !== null ? `최근 1년 ${fmtRatio(m.ret.y1, 1, true)}` : null, m.cagr3y !== null ? `3년 연평균 ${fmtRatio(m.cagr3y, 1, true)}` : null].filter(Boolean);
-    if (parts.length) reasons.push(`수익성 상위권: ${parts.join(", ")} (분배금 보정 시세 기준).`);
+    if (parts.length) reasons.push(`수익성 상위권: ${parts.join(", ")} (${basis}).`);
   }
   if (f.eff >= 70) {
     const sh = m.sharpe3y ?? m.sharpe1y;
@@ -248,13 +306,22 @@ export function explainProposal(p: Proposal, byCode: (code: string) => { name: s
   }
   reasons.push(`과거 ${Math.round(st.weeks / 52 * 10) / 10}년 기준 최대낙폭 ${fmtRatio(st.mdd, 0)}, 연 변동성 ${fmtRatio(st.vol, 0)}.`);
 
+  const overseas = p.members.map((m) => m.cand.etf).filter(isOverseas);
   if (p.avgOverlap !== null) {
     const m = p.maxOverlap;
     reasons.push(
       `구성종목 겹침이 평균 ${p.avgOverlap.toFixed(0)}%로 ${p.avgOverlap < 10 ? "거의 없어 실제로 서로 다른 종목에 분산됩니다" : "일부 있습니다"}${m && m.pct >= 10 ? ` (가장 큰 겹침: ${byCode(m.a)?.name ?? m.a} ↔ ${byCode(m.b)?.name ?? m.b} ${m.pct.toFixed(0)}%)` : ""}.`,
     );
   } else {
-    cautions.push("일부 ETF는 구성종목 정보가 없어(레버리지·합성 등) 겹침을 확인하지 못했습니다.");
+    cautions.push(overseas.length
+      ? "해외 상장 ETF는 구성종목 정보가 없어 겹침을 확인하지 못했습니다. 같은 종목에 중복 투자될 수 있습니다."
+      : "일부 ETF는 구성종목 정보가 없어(레버리지·합성 등) 겹침을 확인하지 못했습니다.");
+  }
+  if (overseas.length && p.avgOverlap !== null) {
+    cautions.push(`해외 상장 ETF(${overseas.map((e) => e.name).join(", ")})는 구성종목 정보가 없어 위 겹침 수치에 포함되지 않았습니다.`);
+  }
+  if (overseas.length) {
+    cautions.push("해외 상장 ETF는 원화 환산 기준이라 환율 변동이 조합의 수익·낙폭에 반영되고, 양도소득세·환전·거래시간이 국내 상장 ETF와 다릅니다. 위 수치는 이를 반영한 과거 값입니다.");
   }
 
   cautions.push(
