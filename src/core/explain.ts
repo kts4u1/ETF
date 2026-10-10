@@ -1,4 +1,4 @@
-import { fmtEok, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
+import { feeWonPer10M, fmtEok, fmtFee, fmtPercentUnit, fmtRatio, fmtWon, fmtYears } from "./format";
 import { HORIZONS, PROFILES, isLeveraged, volOf, mddOf } from "./scoring";
 import type { AssetClass, EtfRecord, Preferences, Region, Scored } from "./types";
 
@@ -192,7 +192,7 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
     reasons.push("200일 이동평균선 위에서 거래되고 12개월 모멘텀이 상위권입니다.");
   }
   if (e.fee !== null && f.cost >= 80) {
-    reasons.push(`총보수 연 ${e.fee}%로 낮습니다(1,000만원당 연 ${Math.round(e.fee * 1000).toLocaleString("ko-KR")}원).`);
+    reasons.push(`총보수 연 ${fmtFee(e.fee)}로 낮습니다(1,000만원당 연 ${feeWonPer10M(e.fee).toLocaleString("ko-KR")}원).`);
   }
   if (f.trust >= 80) {
     reasons.push(`순자산 ${fmtEok(e.aumEok)}, 일평균 거래대금 ${fmtWon(m.avgValue20)} — 사고팔기 쉽고 청산 위험이 낮습니다.`);
@@ -200,8 +200,8 @@ export function explain(s: Scored, prefs: Preferences): Explanation {
   if (s.groupSize > 1) {
     reasons.unshift(
       s.groupRank === 1
-        ? `같은 지수를 추종하는 ETF ${s.groupSize}개 중 종합 1위입니다.`
-        : `같은 지수를 추종하는 ETF ${s.groupSize}개 중 종합 ${s.groupRank}위입니다.`,
+        ? `같은 지수를 추종하는 후보 ETF ${s.groupSize}개 중 종합 1위입니다.`
+        : `같은 지수를 추종하는 후보 ETF ${s.groupSize}개 중 종합 ${s.groupRank}위입니다.`,
     );
   }
   return {

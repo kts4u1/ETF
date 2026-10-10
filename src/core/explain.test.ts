@@ -74,7 +74,9 @@ describe("explain", () => {
     const ex = explain(r.ranked[0]!, DEFAULT_PREFS);
     expect(ex.headline).toMatch(/중립형 · 1~3년 기준 종합 \d+점/);
     expect(ex.reasons.length).toBeGreaterThan(0);
-    expect(ex.reasons.join(" ")).toMatch(/총보수 연 0.03%/);
+    expect(ex.reasons.join(" ")).toMatch(/총보수 연 0\.03%/);
+    // 0.03% × 1,000만원 = 3,000원 (과거에 100배 작게 표기되던 버그의 회귀 방지)
+    expect(ex.reasons.join(" ")).toMatch(/1,000만원당 연 3,000원/);
     expect(ex.reasons.length).toBeLessThanOrEqual(5);
   });
 });

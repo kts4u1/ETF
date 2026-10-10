@@ -1,16 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { HISTORY_LIMIT_DAYS } from "../core/format";
 import { classify } from "../core/taxonomy";
 import { cleanSeries, computeMetrics } from "../core/metrics";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
-import { fetchDetail, fetchEtfList, fetchPrices, type Detail, type ListItem } from "./naver";
+import { cleanDescription, fetchDetail, fetchEtfList, fetchPrices, type Detail, type ListItem } from "./naver";
 import { mapPool } from "./pool";
 
 export const CACHE_DIR = ".cache/naver";
 export const OUT_DIR = "public/data";
 /** 약 8년치. 5년 지표 + 백테스트 학습 구간 확보용. */
-const PRICE_DAYS = 2000;
+const PRICE_DAYS = HISTORY_LIMIT_DAYS;
 /** 차트용 주간 격자 길이(약 5년). */
 const GRID_WEEKS = 260;
 
@@ -130,7 +131,8 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
       fee: d?.fee ?? null,
       divYield: d?.divYield ?? null,
       navGap: it.nav && it.nav > 0 ? round((it.price / it.nav - 1) * 100, 2) : null,
-      description: d?.description ?? "",
+      // 캐시에는 정리 이전 버전이 남아 있을 수 있어 한 번 더 정리한다(멱등).
+      description: cleanDescription(d?.description ?? ""),
       tax: classify(it.name, it.tab),
       m: roundMetrics(m),
     });

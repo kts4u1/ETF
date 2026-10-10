@@ -179,7 +179,52 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
     }
   }
 
+  await writeFile(
+    "public/data/backtest.json",
+    JSON.stringify(buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length)),
+  );
   return renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length });
+}
+
+const MODEL = "모델 종합점수";
+const NAIVE = "(비교) 최근 1년 수익률 순";
+
+/** 앱의 '방법론·한계' 화면이 읽는 요약. 모델과 단순 1년 수익률 순만 담는다. */
+function buildSummary(
+  results: Map<string, Row[]>,
+  icAcc: Map<string, Map<number, number[]>>,
+  profiles: Profile[],
+  asOf: string,
+  nEtf: number,
+  nDates: number,
+) {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const profile of profiles) {
+    out[profile] = {};
+    for (const m of FWD_MONTHS) {
+      const model = summarize(results.get(`${profile}|${MODEL}`) ?? [], m);
+      const naive = summarize(results.get(`${profile}|${NAIVE}`) ?? [], m);
+      const ic = icAcc.get(`${profile}|total`)?.get(m) ?? [];
+      const icIndep = ic.filter((_, i) => i % m === 0);
+      out[profile]![`m${m}`] = {
+        n: model.n,
+        top: model.top,
+        cand: model.cand,
+        excess: model.excess,
+        win: model.win,
+        indepN: model.indepN,
+        indepMean: model.indepMean,
+        indepCI: model.indepCI,
+        topMdd: model.topMdd,
+        candMdd: model.candMdd,
+        naiveTop: naive.top,
+        naiveMdd: naive.topMdd,
+        ic: ic.length ? mean(ic) : null,
+        icCI: icIndep.length > 1 ? 1.96 * stderr(icIndep) : null,
+      };
+    }
+  }
+  return { version: 1, asOf, nEtf, nDates, profiles: out };
 }
 
 // ───────── 리포트 ─────────

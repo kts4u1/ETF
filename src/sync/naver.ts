@@ -108,9 +108,13 @@ export async function fetchDetail(code: string): Promise<Detail> {
   };
 }
 
-/** 공백 정리 후 400자 이내, 가능하면 문장 경계에서 자른다. */
+/**
+ * 운용사 설명 정리: 원천 데이터에 섞인 줄바꿈 태그(<br>)를 공백으로 바꾸고, 공백을 정리한 뒤
+ * 400자 이내로, 가능하면 문장 경계에서 자른다. 일반 태그를 모두 지우지 않는 이유는
+ * "<코스피 200 미국채 혼합지수>"처럼 꺾쇠가 지수명의 일부인 경우가 있기 때문이다. 멱등(여러 번 적용해도 같은 결과).
+ */
 export function cleanDescription(text: string, max = 400): string {
-  const t = text.replace(/\s+/g, " ").trim();
+  const t = text.replace(/<br\s*\/?>/gi, " ").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   const cut = t.slice(0, max);
   const lastStop = Math.max(cut.lastIndexOf("다."), cut.lastIndexOf(". "));

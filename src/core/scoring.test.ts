@@ -57,49 +57,59 @@ describe("effectiveWeights", () => {
 
 describe("checkEligibility", () => {
   const p = DEFAULT_PREFS;
-  it("정상 ETF 통과", () => expect(checkEligibility(makeEtf(), p)).toBeNull());
+  const why = (e: ReturnType<typeof makeEtf>, prefs: typeof p) => checkEligibility(e, prefs)?.reason ?? null;
+  const codeOf = (e: ReturnType<typeof makeEtf>, prefs: typeof p) => checkEligibility(e, prefs)?.code ?? null;
+  it("정상 ETF 통과", () => expect(why(makeEtf(), p)).toBeNull());
   it("레버리지·인버스는 기본 제외, 옵션으로 포함", () => {
     const lev = makeEtf({ name: "KODEX 레버리지" });
-    expect(checkEligibility(lev, p)).toMatch(/레버리지/);
-    expect(checkEligibility(lev, { ...p, includeLeveraged: true, profile: "aggressive" })).toBeNull();
-    expect(checkEligibility(makeEtf({ name: "KODEX 인버스" }), p)).toMatch(/레버리지·인버스/);
+    expect(why(lev, p)).toMatch(/레버리지/);
+    expect(why(lev, { ...p, includeLeveraged: true, profile: "aggressive" })).toBeNull();
+    expect(why(makeEtf({ name: "KODEX 인버스" }), p)).toMatch(/레버리지·인버스/);
   });
   it("커버드콜 제외 옵션", () => {
     const cc = makeEtf({ name: "KODEX 200타겟위클리커버드콜" });
-    expect(checkEligibility(cc, p)).toBeNull();
-    expect(checkEligibility(cc, { ...p, includeCoveredCall: false })).toMatch(/커버드콜/);
+    expect(why(cc, p)).toBeNull();
+    expect(why(cc, { ...p, includeCoveredCall: false })).toMatch(/커버드콜/);
   });
   it("순자산 미달", () => {
-    expect(checkEligibility(makeEtf({ aumEok: 120 }), p)).toMatch(/순자산 120억원/);
-    expect(checkEligibility(makeEtf({ aumEok: 120 }), { ...p, minAumEok: 100 })).toBeNull();
+    expect(why(makeEtf({ aumEok: 120 }), p)).toMatch(/순자산 120억원/);
+    expect(why(makeEtf({ aumEok: 120 }), { ...p, minAumEok: 100 })).toBeNull();
   });
   it("거래대금 부족 / 거래대금 정보 없음", () => {
-    expect(checkEligibility(makeEtf({ m: { avgValue20: 1e8 } }), p)).toMatch(/거래대금/);
-    expect(checkEligibility(makeEtf({ m: { avgValue20: null } }), p)).toMatch(/거래대금/);
+    expect(why(makeEtf({ m: { avgValue20: 1e8 } }), p)).toMatch(/거래대금/);
+    expect(why(makeEtf({ m: { avgValue20: null } }), p)).toMatch(/거래대금/);
   });
   it("상장 1년 미만은 기본 제외, includeYoung 이면 3개월 이상만 허용", () => {
     const young = makeEtf({ m: { ret: { m1: 0, m3: 0.02, m6: 0.04, y1: null, y3: null, y5: null }, years: 0.5 } });
-    expect(checkEligibility(young, p)).toMatch(/1년 미만/);
-    expect(checkEligibility(young, { ...p, includeYoung: true })).toBeNull();
+    expect(why(young, p)).toMatch(/1년 미만/);
+    expect(why(young, { ...p, includeYoung: true })).toBeNull();
     const tooYoung = makeEtf({ m: { ret: { m1: 0, m3: null, m6: null, y1: null, y3: null, y5: null }, years: 0.1 } });
-    expect(checkEligibility(tooYoung, { ...p, includeYoung: true })).toMatch(/3개월 미만/);
+    expect(why(tooYoung, { ...p, includeYoung: true })).toMatch(/3개월 미만/);
   });
   it("총보수 상한", () => {
-    expect(checkEligibility(makeEtf({ fee: 0.9 }), { ...p, maxFee: 0.5 })).toMatch(/총보수/);
-    expect(checkEligibility(makeEtf({ fee: 0.3 }), { ...p, maxFee: 0.5 })).toBeNull();
+    expect(why(makeEtf({ fee: 0.9 }), { ...p, maxFee: 0.5 })).toMatch(/총보수/);
+    expect(why(makeEtf({ fee: 0.3 }), { ...p, maxFee: 0.5 })).toBeNull();
   });
   it("자산군 필터", () => {
-    expect(checkEligibility(makeEtf({ name: "KODEX 국고채10년" }), { ...p, assetClasses: ["kr-equity"] })).toMatch(/자산군/);
+    expect(why(makeEtf({ name: "KODEX 국고채10년" }), { ...p, assetClasses: ["kr-equity"] })).toMatch(/자산군/);
   });
-  it("투자 성향별 위험 한도: 안정형은 변동성 18% 초과를 제외", () => {
-    const risky = makeEtf({ m: { vol3y: 0.35 } });
-    expect(checkEligibility(risky, { ...p, profile: "stable" })).toMatch(/안정형 한도/);
-    expect(checkEligibility(risky, { ...p, profile: "balanced" })).toBeNull();
-    expect(checkEligibility(makeEtf({ m: { vol3y: 0.9, mdd3y: -0.9 } }), { ...p, profile: "aggressive" })).toBeNull();
+  it("투자 성향별 위험 한도: 안정형 15%, 중립형 30% 초과 변동성은 제외", () => {
+    const risky = makeEtf({ m: { vol3y: 0.25 } });
+    expect(why(risky, { ...p, profile: "stable" })).toMatch(/안정형 한도/);
+    expect(why(risky, { ...p, profile: "balanced" })).toBeNull();
+    expect(why(makeEtf({ m: { vol3y: 0.35 } }), { ...p, profile: "balanced" })).toMatch(/중립형 한도/);
+    expect(why(makeEtf({ m: { vol3y: 0.9, mdd3y: -0.9 } }), { ...p, profile: "aggressive" })).toBeNull();
   });
   it("3년 지표가 없으면 1년 지표로 한도를 판단", () => {
     const e = makeEtf({ m: { vol3y: null, vol1y: 0.5 } });
-    expect(checkEligibility(e, { ...p, profile: "balanced" })).toMatch(/변동성/);
+    expect(why(e, { ...p, profile: "balanced" })).toMatch(/변동성/);
+  });
+  it("제외 사유 코드", () => {
+    expect(codeOf(makeEtf({ name: "KODEX 인버스" }), p)).toBe("leveraged");
+    expect(codeOf(makeEtf({ aumEok: 10 }), p)).toBe("small-aum");
+    expect(codeOf(makeEtf({ m: { avgValue20: 1 } }), p)).toBe("low-liquidity");
+    expect(codeOf(makeEtf({ m: { vol3y: 0.9 } }), { ...p, profile: "stable" })).toBe("risk-limit");
+    expect(codeOf(makeEtf(), p)).toBeNull();
   });
 });
 

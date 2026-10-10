@@ -170,9 +170,22 @@ export interface Scored {
   alternatives: string[];
 }
 
+/** 후보에서 제외된 이유의 종류. UI 에서 사유별로 묶어 보여줄 때 쓴다. */
+export type ExclusionCode =
+  | "asset-class"
+  | "leveraged"
+  | "covered-call"
+  | "small-aum"
+  | "low-liquidity"
+  | "too-young"
+  | "no-track-record"
+  | "high-fee"
+  | "risk-limit";
+
 export interface Exclusion {
   etf: EtfRecord;
-  /** 사람이 읽을 수 있는 제외 사유 */
+  code: ExclusionCode;
+  /** 사람이 읽을 수 있는 제외 사유(수치 포함) */
   reason: string;
 }
 
