@@ -102,7 +102,9 @@ small { font-size: 12px; }
 .muted { color: var(--text-3); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
-main.wrap { padding-top: 20px; padding-bottom: 32px; display: grid; gap: 16px; }
+/* 트랙을 minmax(0, 1fr)로 고정한다. 기본 auto 트랙은 가로로 긴 표(.table-wrap 안)의 최소 폭만큼 커져서
+   좁은 화면에서 페이지 전체가 옆으로 밀리고 표가 스스로 스크롤되지 않았다. */
+main.wrap { padding-top: 20px; padding-bottom: 32px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .lead { color: var(--text-2); max-width: 70ch; }
 .hint { color: var(--text-3); font-size: 13px; margin: 8px 0 0; }
 .up { color: var(--up); }
