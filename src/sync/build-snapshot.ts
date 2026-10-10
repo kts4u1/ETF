@@ -8,6 +8,7 @@ import type { HoldingRow } from "../core/holdings";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
 import { cleanDescription, fetchDetail, fetchEtfList, fetchHoldings, fetchPrices, type Detail, type ListItem } from "./naver";
 import { buildHoldingsFile } from "./build-holdings";
+import { loadDelistedEntries, syncDelisted } from "./delisted";
 import { mapPool } from "./pool";
 
 export const CACHE_DIR = ".cache/naver";
@@ -123,6 +124,14 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
       progress("구성종목"),
     );
     holdingsFailed = holdingsRun.errors.size;
+  }
+
+  // 선택: 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF의 시세(백테스트 생존편향 보정용)
+  const delisted = await loadDelistedEntries();
+  if (delisted.length > 0) {
+    log(`상장폐지 ETF ${delisted.length}개(data/delisted.csv) 시세 수집 중…`);
+    const r = await syncDelisted(delisted, PRICE_DAYS, concurrency, log);
+    for (const s of r.skipped.slice(0, 10)) log(`  건너뜀 ${s.code}: ${s.reason}`);
   }
 
   const failed: string[] = [];

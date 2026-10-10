@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  endedEarly,
+  forwardMaxDrawdown,
   cleanSeries,
   computeMetrics,
   forwardReturnMonths,
@@ -173,5 +175,40 @@ describe("forwardReturnMonths", () => {
   });
   it("아직 오지 않은 미래는 null", () => {
     expect(forwardReturnMonths(s, 395, 3)).toBeNull();
+  });
+});
+
+describe("상장폐지(중도 종료) ETF의 보유 결과", () => {
+  // 100일 상승 후 마지막 가격에서 시계열이 끝남(청산). 이후 날짜는 데이터가 없다.
+  const closes = [...grow(100, 0.002), ...grow(40, -0.01, 100 * Math.pow(1.002, 99))];
+  const s = makeSeries(closes);
+  const idx = 60;
+
+  it("기본: 아직 오지 않은 날짜로 보아 null (현재 상장 ETF 동작 유지)", () => {
+    expect(forwardReturnMonths(s, idx, 12)).toBeNull();
+    expect(forwardMaxDrawdown(s, idx, 12)).toBeNull();
+  });
+  it("liquidateAtLast: 마지막 가격에 청산된 결과를 쓴다", () => {
+    const r = forwardReturnMonths(s, idx, 12, { liquidateAtLast: true })!;
+    expect(r).toBeCloseTo(closes[closes.length - 1]! / closes[idx]! - 1, 12);
+    const d = forwardMaxDrawdown(s, idx, 12, { liquidateAtLast: true })!;
+    expect(d).toBeLessThan(-0.2); // 청산 직전 하락 구간의 낙폭이 반영된다
+  });
+  it("보유 기간 안에 데이터가 충분하면 옵션과 무관하게 같은 값", () => {
+    expect(forwardReturnMonths(s, idx, 1, { liquidateAtLast: true })).toBeCloseTo(forwardReturnMonths(s, idx, 1)!, 12);
+  });
+  it("마지막 날 이후에 시작하는 보유는 결과 없음(null)", () => {
+    expect(forwardReturnMonths(s, closes.length - 1, 3, { liquidateAtLast: true })).toBeNull();
+  });
+});
+
+describe("endedEarly", () => {
+  const s2 = makeSeries(grow(100, 0.001)); // 2019-01-01 부터 평일 100일 ≈ 2019-05
+  it("기준일보다 한 달 넘게 일찍 끝나면 종료된 ETF", () => {
+    expect(endedEarly(s2, "20190901")).toBe(true);
+  });
+  it("기준일 근처까지 이어지면 상장 중", () => {
+    expect(endedEarly(s2, s2.dates[s2.dates.length - 1]!)).toBe(false);
+    expect(endedEarly(s2, "20190520")).toBe(false);
   });
 });

@@ -18,17 +18,23 @@ import { mean, quantile, stderr, universeAsOf, weeklyClosesAsOf, type AsOfEtf, t
 const MONTHS = [3, 6, 12] as const;
 const MIN_REPS = 30;
 
-interface Member {
+export interface Member {
   series: PriceSeries;
   idx: number;
   w: number;
+  /** 이미 종료(상장폐지)된 ETF: 보유 도중 시세가 끝나면 마지막 가격에 청산된 것으로 보고 이후는 그 가격을 유지 */
+  ended?: boolean;
 }
 
 /** 처음 비중으로 매수 후 보유했을 때의 실제 결과(수익률, 보유 중 최대낙폭). 아직 그 날짜가 안 왔으면 null. */
-function forwardBasket(members: Member[], t: string, months: number): { ret: number; mdd: number } | null {
+export function forwardBasket(members: Member[], t: string, months: number): { ret: number; mdd: number } | null {
   const target = shiftMonths(t, months);
-  const ref = members[0] as Member;
-  for (const m of members) if ((m.series.dates[m.series.dates.length - 1] as string) < target) return null;
+  // 아직 관측되지 않은 미래(현재 상장 ETF의 시세가 끝남)는 평가 불가. 이미 종료된 ETF는 청산된 것으로 본다.
+  for (const m of members) if (!m.ended && (m.series.dates[m.series.dates.length - 1] as string) < target) return null;
+  // 기준 시계열은 종료되지 않은 ETF 중에서 고른다(날짜 축이 끝까지 이어져야 하므로)
+  const live = members.filter((m) => !m.ended);
+  if (live.length === 0) return null;
+  const ref = live[0] as Member;
   const end = indexOnOrBefore(ref.series.dates, target);
   if (end <= ref.idx) return null;
 
@@ -166,7 +172,7 @@ export function runComboBacktest(
 }
 
 function toMember(a: AsOfEtf & { w: number }): Member {
-  return { series: a.series, idx: a.idx, w: a.w };
+  return { series: a.series, idx: a.idx, w: a.w, ended: a.ended };
 }
 
 const pct = (x: number, d = 1) => `${(x * 100).toFixed(d)}%`;

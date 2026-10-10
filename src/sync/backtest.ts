@@ -41,7 +41,7 @@ interface Fwd { top: number; candMean: number; candMedian: number; topMdd: numbe
 interface Row { t: string; fwd: Record<number, Fwd | null> }
 
 export async function runBacktest(log: (m: string) => void = console.log): Promise<string> {
-  const { loaded, asOf: lastDate } = await loadUniverse();
+  const { loaded, asOf: lastDate, delistedIncluded } = await loadUniverse();
   log(`백테스트 대상 ${loaded.length}개 ETF`);
   const dates = monthEnds("20201231", shiftMonths(lastDate, -3));
 
@@ -77,7 +77,7 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
         const pairs = reps
           .map((s) => {
             const u = byCode.get(s.etf.code)!;
-            return { s, f: forwardReturnMonths(u.series, u.idx, m) };
+            return { s, f: forwardReturnMonths(u.series, u.idx, m, { liquidateAtLast: u.ended }) };
           })
           .filter((p): p is { s: Scored; f: number } => p.f !== null);
         if (pairs.length < MIN_CANDIDATES) continue;
@@ -101,8 +101,8 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
             const mdd: number[] = [];
             for (const s of group) {
               const u = byCode.get(s.etf.code)!;
-              const r = forwardReturnMonths(u.series, u.idx, m);
-              const d = forwardMaxDrawdown(u.series, u.idx, m);
+              const r = forwardReturnMonths(u.series, u.idx, m, { liquidateAtLast: u.ended });
+              const d = forwardMaxDrawdown(u.series, u.idx, m, { liquidateAtLast: u.ended });
               if (r !== null && d !== null) {
                 ret.push(r);
                 mdd.push(d);
@@ -129,12 +129,13 @@ export async function runBacktest(log: (m: string) => void = console.log): Promi
     "public/data/backtest.json",
     JSON.stringify({
       ...buildSummary(results, icAcc, profiles, lastDate, loaded.length, dates.length),
+      delistedIncluded,
       combos: combo.summary,
       comboMonths: combo.nMonths,
     }),
   );
   return (
-    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length }) +
+    renderReport({ results, icAcc, profiles, strategies: Object.keys(strategies), asOf: lastDate, nEtf: loaded.length, nDates: dates.length, delistedIncluded }) +
     combo.markdown
   );
 }
@@ -215,6 +216,7 @@ function renderReport(a: {
   asOf: string;
   nEtf: number;
   nDates: number;
+  delistedIncluded: number;
 }): string {
   const L: string[] = [];
   L.push("# 백테스트 리포트 (워크포워드)");
@@ -223,6 +225,11 @@ function renderReport(a: {
   L.push("- 방법: 각 월말 시점의 데이터만으로 점수 산출 → 선택한 상위 10개(자산군·테마당 최대 2개)의 이후 3·6·12개월 실제 수익률을 같은 시점 후보군(게이트 통과, 동일 지수 대표) **중앙값**과 비교.");
   L.push("- 후보군·투자 성향 한도·게이트는 실제 앱과 같은 코드를 사용. 단, 과거 시점의 총보수·순자산은 알 수 없어 비용은 중립(50점), 순자산은 통과값으로 고정.");
   L.push("");
+  L.push(
+    a.delistedIncluded > 0
+      ? `- **상장폐지 ETF ${a.delistedIncluded}개 포함**(data/delisted.csv). 보유 도중 시세가 끝난 ETF는 마지막 가격에 청산된 것으로 계산해 생존편향을 줄였습니다(완전히 제거되지는 않음: 목록에 없는 상장폐지 ETF는 여전히 빠져 있음).`
+      : "- **상장폐지 ETF 미포함 — 생존편향 미보정.** KRX·KIND 등 상장폐지 목록은 로그인·접근 제한으로 자동 수집할 수 없었습니다. `data/delisted.csv`를 제공하면 포함해서 다시 계산합니다(README 참고).",
+  );
   L.push("> **해석 시 주의** — 생존편향(현재 상장 ETF만 포함), 한 번의 장세에 집중된 짧은 표본, 월별 표본의 중첩, 거래비용·세금 미반영. "
     + "'초과수익'은 후보군 중앙값 대비이며 절대 수익을 보장하지 않습니다. 비중첩 표본의 95% 신뢰구간이 0을 포함하면 우연과 구분되지 않습니다.");
   L.push("");

@@ -1,12 +1,15 @@
 /** 백테스트 공통 코드: 과거 시점의 유니버스 구성, 월말 생성, 통계 유틸. */
 import { readFile } from "node:fs/promises";
-import { cleanSeries, computeMetrics, indexOnOrBefore, shiftMonths } from "../core/metrics";
+import { cleanSeries, computeMetrics, endedEarly, indexOnOrBefore, shiftMonths } from "../core/metrics";
 import type { EtfRecord, PriceSeries, Snapshot } from "../core/types";
 import { loadCachedPrices } from "./build-snapshot";
+import { loadCachedDelisted } from "./delisted";
 
 export interface Loaded {
   rec: EtfRecord; // 정적 정보(이름·분류)만 사용
   series: PriceSeries;
+  /** 시세가 데이터 기준일보다 일찍 끝난 ETF(상장폐지·청산). 보유 도중 끝나면 마지막 가격에 청산된 것으로 계산한다. */
+  ended: boolean;
 }
 
 export interface AsOfEtf {
@@ -15,18 +18,26 @@ export interface AsOfEtf {
   series: PriceSeries;
   /** 기준일에 해당하는 시계열 인덱스 */
   idx: number;
+  ended: boolean;
 }
 
-export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string }> {
+export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; delistedIncluded: number }> {
   const snap = JSON.parse(await readFile("public/data/snapshot.json", "utf8")) as Snapshot;
   const loaded: Loaded[] = [];
   for (const rec of snap.etfs) {
     const raw = await loadCachedPrices(rec.code);
     if (!raw) continue;
     const series = cleanSeries(raw);
-    if (series.dates.length > 60) loaded.push({ rec, series });
+    if (series.dates.length > 60) loaded.push({ rec, series, ended: endedEarly(series, snap.asOf) });
   }
-  return { loaded, asOf: snap.asOf };
+  // 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF(있을 때만). 생존편향을 줄이기 위한 것이다.
+  let delistedIncluded = 0;
+  for (const d of await loadCachedDelisted()) {
+    if (loaded.some((l) => l.rec.code === d.rec.code)) continue; // 이미 상장 목록에 있으면 중복 방지
+    loaded.push({ rec: d.rec, series: d.series, ended: true });
+    delistedIncluded++;
+  }
+  return { loaded, asOf: snap.asOf, delistedIncluded };
 }
 
 /** 기준일 t 시점에 "살아 있던" ETF와 그 시점까지의 지표. 기준일 이후 데이터는 쓰지 않는다. */
@@ -39,7 +50,7 @@ export function universeAsOf(loaded: Loaded[], t: string): AsOfEtf[] {
     if ((l.series.dates[idx] as string) < `${t.slice(0, 6)}01`) continue;
     const m = computeMetrics(l.series, idx);
     if (!m) continue;
-    out.push({ e: { ...l.rec, aumEok: 10_000, fee: null, navGap: null, m }, series: l.series, idx });
+    out.push({ e: { ...l.rec, aumEok: 10_000, fee: null, navGap: null, m }, series: l.series, idx, ended: l.ended });
   }
   return out;
 }

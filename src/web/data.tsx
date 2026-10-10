@@ -23,6 +23,8 @@ export interface BacktestSummary {
   /** 조합 제안 검증: 성향 → 보유기간(m3/m6/m12) → 전략명 → 결과 */
   combos?: Record<string, Record<string, Record<string, ComboCell>>>;
   comboMonths?: number;
+  /** 백테스트에 포함된 상장폐지 ETF 수(0이면 생존편향 미보정) */
+  delistedIncluded?: number;
 }
 export interface BacktestCell {
   n: number;
