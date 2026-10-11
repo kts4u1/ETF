@@ -8,14 +8,14 @@
 #   sync-failed   재시도해도 수집이 끝나지 않았다(종료 코드 1)
 #   check-failed  테스트 또는 빌드가 실패했다(종료 코드 1)
 # 커밋·게시는 호출한 쪽(GitHub Actions 또는 루틴)이 한다.
-# 환경변수: REFRESH_ATTEMPTS(기본 3), REFRESH_RETRY_SLEEP(재시도 대기 기본 60초, 시도마다 배로), REFRESH_DEADLINE_MIN(이 시간이 지나면 새 시도를 시작하지 않음, 기본 30),
+# 환경변수: REFRESH_ATTEMPTS(기본 3), REFRESH_RETRY_SLEEP(재시도 대기 기본 120초, 시도마다 배로), REFRESH_DEADLINE_MIN(이 시간이 지나면 새 시도를 시작하지 않음, 기본 30),
 #           REFRESH_SKIP_PROBE=1(접속 점검 건너뜀), REFRESH_STALE_DAYS(시세만 바뀐 경우 커밋 기준 일수, 기본 5), REFRESH_ACCEPT_SHRINK=1(대량 감소 승인) — 뒤의 둘은 scripts/data-changed.ts 참고
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export NODE_USE_ENV_PROXY=1 # 프록시 환경에서 Node 의 fetch 가 프록시를 쓰게 한다(프록시가 없으면 영향 없음)
 
 attempts="${REFRESH_ATTEMPTS:-3}"
-retry_sleep="${REFRESH_RETRY_SLEEP:-60}"
+retry_sleep="${REFRESH_RETRY_SLEEP:-120}"
 deadline_min="${REFRESH_DEADLINE_MIN:-30}"
 start="$(date +%s)"
 

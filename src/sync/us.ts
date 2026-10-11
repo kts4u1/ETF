@@ -21,6 +21,7 @@ import { assertWithinLimit, US_STAGE_RULE } from "./failure-policy";
 import { HttpError, withRetry } from "./naver";
 import { mapPool } from "./pool";
 import { round, roundMetrics } from "./rounding";
+import { Throttle } from "./throttle";
 import { NotFoundError, YahooClient, ymdFromUnix, type ChartData, type FetchLike, type FundInfo } from "./yahoo";
 
 export const US_CACHE_DIR = ".cache/yahoo";
@@ -316,8 +317,20 @@ export interface UsDeps {
   openSession?(): Promise<void>;
 }
 
+/**
+ * 운영용 야후 클라이언트의 호출 제한 대응. 요청 시작 간격 30ms(초당 약 33건 이하)로 속도를 누르고, 429 를 받으면 전체가 같이 쉰다.
+ * 쉬는 동안 호출마다 최대 8번(쿨다운 대기 포함) 시도한다.
+ */
+export function createYahooThrottle(log: (msg: string) => void = (m) => console.warn(m)): Throttle {
+  return new Throttle({
+    minIntervalMs: 30,
+    onCooldown: (waitMs, level) => log(`  야후 호출 제한(HTTP 429) — 전체가 ${Math.round(waitMs / 1000)}초 쉬었다가 계속합니다(연속 ${level}번째)`),
+    onGiveUp: (n) => log(`  야후 호출 제한이 ${n}번 쉬어도 풀리지 않아 이 실행에서는 더 요청하지 않습니다(남은 종목은 실패로 처리 — 나중에 다시 실행하면 이어서 받습니다)`),
+  });
+}
+
 export function createUsDeps(fetchFn?: FetchLike): UsDeps {
-  const client = new YahooClient({ fetch: fetchFn });
+  const client = new YahooClient({ fetch: fetchFn, retry: { attempts: 8, baseMs: 800 }, throttle: createYahooThrottle() });
   return {
     fetchNasdaqList: () => fetchNasdaqList(fetchFn),
     fetchChart: (s, a, b, o) => client.fetchChart(s, a, b, o),
