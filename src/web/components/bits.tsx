@@ -96,10 +96,11 @@ export function Delta({ v, digits = 1 }: { v: number | null; digits?: number }) 
 export function Disclaimer({ compact = false }: { compact?: boolean }) {
   return (
     <p className={`disclaimer${compact ? " compact" : ""}`} role="note">
+      <b>{tr("투자 유의사항", "Important")}</b>{" "}
       {tr(
-        "투자 유의사항",
-        "Important:",
-      ).replace(/^/, "")}
+        "이 앱은 과거 데이터로 ETF를 분류·비교하는 정보 제공 도구이며 투자 권유나 자문이 아닙니다. 과거 성과는 미래 수익을 보장하지 않고, 투자 손실은 투자자 본인에게 귀속됩니다. 투자 전 상품설명서와 운용사 공시를 확인하세요.",
+        "This app is an information tool that classifies and compares ETFs using past data. It is not investment advice or a solicitation. Past performance does not guarantee future returns, and any investment losses are borne by the investor. Check the prospectus and the issuer's disclosures before investing.",
+      )}
     </p>
   );
 }

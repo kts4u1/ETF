@@ -25,12 +25,8 @@ const withTax = (name: string, tax: Partial<Taxonomy>, over: Partial<EtfRecord> 
   return { ...base, tax: { ...base.tax, ...tax } };
 };
 
-/**
- * 이 파일이 소유하지 않은 모듈(scoring 의 성향·기간 이름, format 의 년·억)이 영어화되기 전에도 통과하도록
- * 그 조각만 허용하고 나머지 한글은 실패로 본다. 해당 모듈이 영어화되면 허용 목록은 쓰이지 않는다.
- */
-const OTHER_OWNER = new Set(["안정형", "중립형", "공격형", "년", "억", "조", "개월", "만", "원"]);
-const ownHangul = (text: string): string[] => hangulIn(text).filter((h) => !OTHER_OWNER.has(h));
+/** 영어 문장에는 한글이 한 글자도 없어야 한다(ETF 이름 같은 데이터 값은 이 테스트가 다루지 않는다) */
+const ownHangul = (text: string): string[] => hangulIn(text);
 
 /** 한 ETF 의 영어 설명 전체를 한 문자열로 */
 const allText = (e: EtfRecord): string => [typeLine(e), indexTrackingSentence(e), taxNote(e), ...structureNotes(e), ...cautions(e).map((c) => c.text)].join(" | ");

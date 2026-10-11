@@ -110,7 +110,7 @@ function ValidationLines({ size }: { size: 2 | 3 }) {
         <b>{tr(`과거 검증(${PROFILES[prefs.profile].label} · ${size}개 조합 · 보유 ${months}개월):`, `Backtest (${PROFILES[prefs.profile].label} · ${size}-ETF combo · ${months}-month hold):`)}</b>{" "}
         {isEn()
           ? `Max drawdown while held averaged ${fmtRatio(c.mdd, 0)}, ${Math.abs(c.dMdd * 100).toFixed(1)}pp ${better ? "smaller" : "larger"} than an equal-weight top 3 picks (${fmtRatio(b.mdd, 0)}) (${sig ? "a difference unlikely to be chance" : "not distinguishable from chance"}). Return differed by ${c.dRet >= 0 ? "+" : ""}${(c.dRet * 100).toFixed(1)}pp, ${retSig ? "a meaningful difference" : "not distinguishable from chance"}.`
-          : `보유 중 최대낙폭이 평균 ${fmtRatio(c.mdd, 0)}로, 추천 상위 3개를 균등하게 산 경우(${fmtRatio(b.mdd, 0)})보다 ${Math.abs(c.dMdd * 100).toFixed(1)}%p ${better ? "작았습니다" : "컸습니다"} (${sig ? "우연으로 보기 어려운 차이" : "우연과 구분되지 않는 수준"}). 수익은 ${c.dRet >= 0 ? "+" : ""}${(c.dRet * 100).toFixed(1)}%p 차이로 ${retSig ? "의미 있는 차이가 있었습니다" : "우연과 구분되지 않았습니다"}.`}
+          : `보유 중 최대낙폭이 평균 ${fmtRatio(c.mdd, 0)}로, 추천 상위 3개를 균등하게 산 경우(${fmtRatio(b.mdd, 0)})보다 ${Math.abs(c.dMdd * 100).toFixed(1)}%p ${better ? "작았습니다" : "컸습니다"}(${sig ? "우연으로 보기 어려운 차이" : "우연과 구분되지 않는 수준"}). 수익은 ${c.dRet >= 0 ? "+" : ""}${(c.dRet * 100).toFixed(1)}%p 차이로 ${retSig ? "의미 있는 차이가 있었습니다" : "우연과 구분되지 않았습니다"}.`}
       </li>
     );
   });
