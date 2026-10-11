@@ -7,6 +7,7 @@ import { isOverseas, marketOf } from "../../core/market";
 import { aumFundNote, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery, searchUsIndex, usSkipReasonText } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { AssetClass, EtfRecord, MarketFilter, Region } from "../../core/types";
+import { BasketButton } from "../components/BasketButton";
 import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { useApp, useUsIndex } from "../data";
 import { compareHref, etfHref } from "../router";
@@ -144,6 +145,7 @@ export function Explore() {
           <thead>
             <tr>
               <th aria-label={tr("비교 선택", "Select to compare")} />
+              <th aria-label={tr("장바구니", "Basket")} title={tr("장바구니", "Basket")}>🛒</th>
               {COLS.map((c) => (
                 <th key={c.key} className={c.num ? "num" : ""} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"} title={c.hint}>
                   <button type="button" className="th-btn" onClick={() => toggleSort(c.key, c.desc)}>
@@ -159,6 +161,7 @@ export function Explore() {
               return (
                 <tr key={e.code}>
                   <td><input type="checkbox" checked={sel.includes(e.code)} disabled={!sel.includes(e.code) && sel.length >= 4} onChange={() => toggleSel(e.code)} aria-label={tr(`${e.name} 비교에 추가`, `Add ${e.name} to comparison`)} /></td>
+                  <td><BasketButton etf={e} compact /></td>
                   <td className="name-cell">
                     <a href={etfHref(e.code)}>{e.name}</a>
                     <span className="muted"><MarketBadge etf={e} /> {e.code}{isOverseas(e) && listingLine(e) ? ` · ${listingLine(e)}` : ""} · {ASSET_CLASS_LABEL[e.tax.assetClass]}{e.tax.theme ? ` · ${themeLabel(e.tax.theme)}` : ""}{e.tax.tags.length ? ` · ${e.tax.tags.map((t) => TAG_LABEL[t]).join("·")}` : ""}</span>

@@ -6,6 +6,7 @@ import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
 import { aumFundNote, aumText, fxMethod, fxNote, listingLine, matchRank } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
+import { BasketButton } from "../components/BasketButton";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { OverlapPanel } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
@@ -144,7 +145,7 @@ export function Compare({ codes }: { codes: string[] }) {
             <h2 id="cmp-table">{tr("지표 비교", "Metric comparison")}</h2>
             <div className="table-wrap">
               <table className="table compare-table">
-                <thead><tr><th />{picked.map((p) => <th key={p.code} className="num"><a href={etfHref(p.code)}>{p.name}</a></th>)}</tr></thead>
+                <thead><tr><th />{picked.map((p) => <th key={p.code} className="num"><a href={etfHref(p.code)}>{p.name}</a><div className="th-action"><BasketButton etf={p} /></div></th>)}</tr></thead>
                 <tbody>
                   <tr>
                     <th scope="row">{tr("상장 시장", "Listing market")}</th>

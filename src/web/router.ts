@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export type RouteName = "home" | "explore" | "etf" | "compare" | "combo" | "learn" | "method";
+export type RouteName = "home" | "explore" | "etf" | "compare" | "combo" | "basket" | "learn" | "method";
 
 export interface Route {
   name: RouteName;
@@ -20,6 +20,7 @@ export function parseHash(hash: string): Route {
     case "explore":
     case "compare":
     case "combo":
+    case "basket":
     case "learn":
     case "method":
       return { name: head, param: null, query };

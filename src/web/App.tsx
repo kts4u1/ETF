@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { fmtAsOf } from "../core/format";
 import { langArray, tr } from "../core/i18n";
+import { codesFromQuery } from "../core/basket";
+import { BasketProvider, useBasket } from "./basket";
 import { DataProvider, useApp } from "./data";
 import { Combo } from "./pages/Combo";
+import { Basket } from "./pages/Basket";
 import { Compare } from "./pages/Compare";
 import { Detail } from "./pages/Detail";
 import { Explore } from "./pages/Explore";
@@ -14,14 +17,15 @@ import { href, useRoute } from "./router";
 import { readText, writeText } from "./storage";
 
 const NAV_LABEL = langArray(
-  ["추천", "탐색", "비교", "조합", "배우기", "방법론"],
-  ["Picks", "Explore", "Compare", "Combos", "Learn", "Method"],
+  ["추천", "탐색", "비교", "조합", "장바구니", "배우기", "방법론"],
+  ["Picks", "Explore", "Compare", "Combos", "Basket", "Learn", "Method"],
 );
 const NAV = [
   { name: "home", path: "/" },
   { name: "explore", path: "/explore" },
   { name: "compare", path: "/compare" },
   { name: "combo", path: "/combo" },
+  { name: "basket", path: "/basket" },
   { name: "learn", path: "/learn" },
   { name: "method", path: "/method" },
 ] as const;
@@ -46,6 +50,7 @@ function useTheme(): [Theme, () => void] {
 function Shell() {
   const route = useRoute();
   const { snap } = useApp();
+  const basket = useBasket();
   const [theme, cycleTheme] = useTheme();
 
   let page;
@@ -54,6 +59,7 @@ function Shell() {
     case "etf": page = <Detail code={route.param} />; break;
     case "compare": page = <Compare codes={(route.query.get("codes") ?? "").split(",").filter(Boolean)} />; break;
     case "combo": page = <Combo />; break;
+    case "basket": page = <Basket incoming={codesFromQuery(route.query.get("codes"))} />; break;
     case "learn": page = <Learn />; break;
     case "method": page = <Method />; break;
     default: page = <Home />;
@@ -67,7 +73,10 @@ function Shell() {
           <a className="brand" href={href("/")}><span className="logo" aria-hidden>↗</span> ETF Search</a>
           <nav aria-label={tr("주 메뉴", "Main menu")}>
             {NAV.map((n, i) => (
-              <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>{NAV_LABEL[i]}</a>
+              <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>
+                {NAV_LABEL[i]}
+                {n.name === "basket" && basket.count > 0 && <><span className="sr-only">{tr(` (${basket.count}개 담김)`, ` (${basket.count} in basket)`)}</span><span className="nav-count" aria-hidden>{basket.count}</span></>}
+              </a>
             ))}
           </nav>
           <LangSwitch />
@@ -105,9 +114,11 @@ function Localized() {
 export function App() {
   return (
     <LangProvider>
-      <DataProvider>
-        <Localized />
-      </DataProvider>
+      <BasketProvider>
+        <DataProvider>
+          <Localized />
+        </DataProvider>
+      </BasketProvider>
     </LangProvider>
   );
 }

@@ -8,6 +8,7 @@ import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
 import { aumText, fxNote, listingLine } from "../../core/market-view";
 import { mddOf, sameGroup, volOf } from "../../core/scoring";
 import { CautionList, Delta, Disclaimer, FactorBars, FxNote, MarketBadge, RiskPips, TagChips } from "../components/bits";
+import { BasketButton } from "../components/BasketButton";
 import { HoldingsSection } from "../components/Holdings";
 import { LineChart } from "../components/LineChart";
 import { useApp, useSeries } from "../data";
@@ -52,6 +53,7 @@ export function Detail({ code }: { code: string | null }) {
           <p className="sub">{e.code} · {e.issuer ? issuerLabel(e.issuer) : tr("운용사 미상", "Issuer unknown")} · {typeLine(e)}</p>
           {listing && <p className="sub">{listing}</p>}
           <div className="etf-meta"><TagChips etf={e} max={8} /><RiskPips etf={e} /></div>
+          <p className="detail-actions"><BasketButton etf={e} /></p>
         </div>
         <div className="price-box">
           {price.sub ? (
