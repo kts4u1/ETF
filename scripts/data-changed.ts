@@ -3,6 +3,7 @@
 // 환경변수
 //   REFRESH_STALE_DAYS(기본 5)   시세만 바뀐 경우 마지막 커밋보다 이만큼 이상 새로울 때 커밋. 1 이면 거래일마다.
 //   REFRESH_ACCEPT_SHRINK=1      종목이 크게 줄어든 것을 사람이 승인했다(필터 기준 변경·대규모 상장폐지 등). 기준일 검사는 그대로 한다.
+//   REFRESH_FORCE=1              커밋할 변화가 없어도 지금 받은 데이터로 갱신한다(이상 징후 검사는 그대로 한다).
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { SYNC_FAILURES_FILE } from "../src/sync/build-snapshot";
@@ -46,6 +47,7 @@ const decision = decideRefresh(head<SnapLike>("public/data/snapshot.json"), now,
   unavailable,
   today,
   acceptShrink: process.env.REFRESH_ACCEPT_SHRINK === "1",
+  force: process.env.REFRESH_FORCE === "1",
 });
 
 if (decision.result !== "changed") restore();

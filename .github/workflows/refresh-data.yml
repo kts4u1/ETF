@@ -7,6 +7,7 @@
 # (정기 실행에 쓰려면 아래 REFRESH_STALE_DAYS 기본값을 바꾼다).
 # 종목이 갑자기 많이 줄거나 기준일이 과거·미래면 커밋하지 않고 실패로 끝난다(알림은 GitHub 기본 메일).
 # 줄어든 것이 정상(필터 기준 변경, 대규모 상장폐지)이면 수동 실행의 accept_shrink 를 켜서 다시 실행하면 받아들인다.
+# 지금 당장 최신 데이터로 바꾸고 싶으면 수동 실행의 force_commit 을 켠다(5일 기준을 건너뛰고 커밋; 이상 징후 검사는 그대로).
 #
 # 기본 브랜치에 병합돼 있어야 스케줄이 동작한다. 기본 브랜치가 아닌 곳에서 수동 실행하면 수집·검증만 하고 커밋은 하지 않는다.
 # GitHub 서버에서 네이버·야후 접속이 막혀 있으면 접속 점검 단계에서 이유와 함께 빠르게 실패한다(아무것도 커밋하지 않는다).
@@ -22,6 +23,11 @@ on:
         description: "시세만 바뀐 경우 마지막 커밋보다 이만큼(일) 이상 새로울 때 커밋 — 1 이면 거래일마다(비우면 5)"
         required: false
         default: ""
+      force_commit:
+        description: "커밋할 만한 변화가 없어도 지금 받은 최신 데이터로 갱신해 커밋한다(이상 징후 검사는 그대로)"
+        type: boolean
+        required: false
+        default: false
       accept_shrink:
         description: "이상 징후(종목이 크게 줄어듦)로 멈춘 뒤, 정상적인 변화임을 확인했다면 켠다 — 기준일 이상은 승인해도 막힌다"
         type: boolean
@@ -51,6 +57,7 @@ jobs:
         env:
           REFRESH_STALE_DAYS: ${{ inputs.stale_days || '5' }}
           REFRESH_ACCEPT_SHRINK: ${{ inputs.accept_shrink && '1' || '0' }}
+          REFRESH_FORCE: ${{ inputs.force_commit && '1' || '0' }}
         run: |
           set -o pipefail
           bash scripts/refresh-data.sh 2>&1 | tee refresh.log
