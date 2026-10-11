@@ -9,7 +9,7 @@ import { aumFundNote, aumText, fxNote } from "../../core/market-view";
 import { mddOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
 import { localToday, useBasket } from "../basket";
-import { copyText, downloadText } from "../clipboard";
+import { copyText, saveFile } from "../clipboard";
 import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { useApp } from "../data";
 import { compareHref, etfHref, href } from "../router";
@@ -288,14 +288,16 @@ export function Basket({ incoming }: { incoming: string[] }) {
               </label>
               <button type="button" className="btn ghost" onClick={() => copy(tr("코드 목록", "code list"), toCodeList(sorted))} title={tr("증권사 앱 검색창에 하나씩 붙여넣을 코드·티커", "Codes and tickers to paste into your brokerage app's search")}>{tr("코드 복사", "Copy codes")}</button>
               <button type="button" className="btn ghost" onClick={() => copy(tr("요약 목록", "summary"), toSummaryText(sorted, meta))} title={tr("이름·코드·가격·수익률을 메모 앱에 붙일 수 있는 글로", "Names, codes, prices and returns as text for a notes app")}>{tr("목록 복사", "Copy list")}</button>
-              <button type="button" className="btn ghost" onClick={() => {
+              <button type="button" className="btn ghost" onClick={async () => {
                 const csv = toCsv(sorted, meta);
-                const ok = downloadText(`etf-basket-${localToday()}.csv`, csv, "text/csv");
-                if (ok) {
-                  done(tr("CSV 파일을 받았어요. 받아지지 않았다면 내용을 직접 복사하세요.", "Downloaded the CSV file. If nothing downloaded, copy the contents yourself."), false, { label: tr("내용 보기", "Show contents"), run: () => setManual({ title: "CSV", text: csv }) });
+                const out = await saveFile(`etf-basket-${localToday()}.csv`, csv, "text/csv");
+                if (out === "saved") {
+                  done(tr("CSV 파일을 저장했어요. 열리지 않거나 저장이 안 됐다면 내용을 직접 복사하세요.", "Saved the CSV file. If it did not save, copy the contents yourself."), false, { label: tr("내용 보기", "Show contents"), run: () => setManual({ title: "CSV", text: csv }) });
+                } else if (out === "declined") {
+                  done(tr("CSV 저장을 취소했어요.", "CSV save cancelled."));
                 } else {
                   setManual({ title: "CSV", text: csv });
-                  done(tr("파일을 받을 수 없어요. 아래 내용을 직접 복사하세요.", "Cannot download a file here. Copy the text below."), true);
+                  done(tr("이 화면에서는 파일을 저장할 수 없어요. 아래 내용을 직접 복사하세요.", "Cannot save a file here. Copy the text below."), true);
                 }
               }}>{tr("CSV 받기", "Download CSV")}</button>
               {!embedded && <button type="button" className="btn ghost" onClick={() => copy(tr("링크", "link"), shareUrl())} title={tr("다른 기기에서 열면 이 목록을 담을 수 있어요(메모는 제외)", "Open on another device to add this list (notes not included)")}>{tr("링크 복사", "Copy link")}</button>}

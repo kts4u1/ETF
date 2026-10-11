@@ -43,3 +43,25 @@ export function downloadText(filename: string, text: string, mime: string): bool
     return false;
   }
 }
+
+export type SaveOutcome = "saved" | "declined" | "unavailable";
+
+/**
+ * 파일로 저장한다. claude.ai 아티팩트 안에서는 일반 다운로드 링크가 아무 일도 하지 않으므로(뷰어가 페이지의 직접 다운로드를 허용하지 않는다)
+ * 플랫폼의 downloads 기능(window.claude)으로 저장을 요청하고 — 뷰어가 확인창에서 거절할 수 있다 — 그 기능이 없으면 "unavailable"을 돌려
+ * 호출한 화면이 텍스트를 직접 복사하게 한다. 아티팩트가 아닌 일반 브라우저에서는 링크로 받는다.
+ */
+export async function saveFile(filename: string, text: string, mime: string): Promise<SaveOutcome> {
+  const claude = (window as unknown as { claude?: { use?: (name: string) => Promise<unknown> } }).claude;
+  if (claude && typeof claude.use === "function") {
+    try {
+      const dl = (await claude.use("downloads")) as { save: (r: { filename: string; data: string }) => Promise<unknown> } | null;
+      if (!dl) return "unavailable";
+      await dl.save({ filename, data: text });
+      return "saved";
+    } catch (e) {
+      return (e as { code?: string } | null)?.code === "declined" ? "declined" : "unavailable";
+    }
+  }
+  return downloadText(filename, text, mime) ? "saved" : "unavailable";
+}
