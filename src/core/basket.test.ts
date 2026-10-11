@@ -103,7 +103,7 @@ describe("parseCodeText: 붙여넣은 목록에서 코드 뽑기", () => {
 
   it("이 앱이 내보낸 요약 글을 다시 읽는다: 이름 뒤 마지막 괄호의 코드만, 메모·제목 줄은 무시", () => {
     const text = [
-      "[ETF 장바구니] 3개 · 2026-10-08 기준",
+      "[ETF 장바구니] 3개 · 2026-10-08 기준 종가(실시간 시세 아님)",
       "1. TIGER 미국S&P500(H) (360750)",
       "   ↳ 국내 · 20,000원 · 1년 +12.0%",
       "   ↳ 메모: BUY at 50, SPY 말고",
@@ -135,9 +135,59 @@ describe("parseCodeText: 붙여넣은 목록에서 코드 뽑기", () => {
     expect(parseCodeText("")).toEqual([]);
   });
 
-  it("후보가 너무 많아도 BASKET_MAX*2 개에서 멈춘다(붙여넣기 폭주 방지)", () => {
-    const text = Array.from({ length: BASKET_MAX * 5 }, (_, i) => `E${i}`).join("\n");
-    expect(parseCodeText(text).length).toBeLessThanOrEqual(BASKET_MAX * 2 + 1);
+  it("증권사 목록의 '이름 + 코드' 줄: 이름 끝의 (H) 같은 괄호가 아니라 6자리 코드를 읽는다", () => {
+    expect(parseCodeText("453850 ACE 미국30년국채액티브(H) 35,000 +0.5%")).toEqual(["453850"]);
+    expect(parseCodeText("ACE 미국30년국채액티브(H) 453850")).toEqual(["453850"]);
+    expect(parseCodeText("KODEX 미국나스닥100(USD) 379810")).toEqual(["379810"]);
+    expect(parseCodeText("0219E0 KODEX 어떤 ETF(합성)")).toEqual(["0219E0"]);
+    expect(parseCodeText("1. KODEX 200 (069500)\n2) TIGER 미국S&P500(H) (360750)")).toEqual(["069500", "360750"]);
+  });
+
+  it("영어 이름이 섞인 줄: 소문자·일반 단어(Bond, Year)는 티커로 보지 않고, 대문자 티커와 괄호의 티커만", () => {
+    const t = parseCodeText("SCHZ Schwab US Aggregate Bond ETF 22.5 -0.1%");
+    expect(t).toContain("SCHZ");
+    expect(t).not.toContain("BOND");
+    expect(t).not.toContain("AGGREGATE");
+    expect(t).not.toContain("22.5");
+    expect(parseCodeText("Vanguard Total World Stock (VT) 120.5")).toEqual(["VT"]);
+    expect(parseCodeText("Pimco Active Bond ETF 100 shares")).toEqual([]); // ETF 같은 대문자 일반어도 티커로 보지 않는다
+  });
+
+  it("숫자만 있는 조각은 6자리일 때만 코드로 본다(가격·거래량·수량 제외)", () => {
+    expect(parseCodeText("069500 35000 1234567 12")).toEqual(["069500"]);
+    expect(parseCodeText("SPY 543 QQQ")).toEqual(["SPY", "QQQ"]);
+  });
+
+  it("엑셀을 거친 CSV(=\"069500\" 표기)와 이 앱 CSV 의 코드 열을 읽는다", () => {
+    expect(parseCodeText('code,name,market\r\n="069500",KODEX 200,KR\r\n="0219E0","어떤 ETF",KR\r\nSPY,SPDR,US')).toEqual(["069500", "0219E0", "SPY"]);
+  });
+
+  it("†·※·* 안내 줄은 건너뛴다(내보낸 글 끝의 설명이 코드로 읽히지 않게)", () => {
+    expect(parseCodeText("SPY\n† Fund-level net assets: includes other share classes\n* Past data does not guarantee\n※ 안내")).toEqual(["SPY"]);
+  });
+
+  it("개행이 \\r 단독이거나 섞여 있어도 줄로 나눈다", () => {
+    expect(parseCodeText("069500\rSPY\r\nQQQ\nVTI")).toEqual(["069500", "SPY", "QQQ", "VTI"]);
+  });
+
+  it("후보가 아주 많아도(2,000개 상한) 정상 코드 500개는 모두 읽는다 — 이름 속 단어가 자리를 차지해도 뒤쪽이 잘리지 않게", () => {
+    const text = Array.from({ length: 500 }, (_, i) => `E${i} ETF`).join("\n");
+    expect(parseCodeText(text).length).toBeGreaterThanOrEqual(500);
+    const huge = Array.from({ length: BASKET_MAX * 30 }, (_, i) => `E${i}`).join("\n");
+    expect(parseCodeText(huge).length).toBeLessThanOrEqual(BASKET_MAX * 20 + 1);
+  });
+
+  it("퍼징: 임의 문자열에서 예외 없이 코드 모양의 값만 돌려준다", () => {
+    const alphabet = "AB09 ,;|\t\r\n()=\"'$#[]*†↳.-가힣 ★😀/\\&%+";
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    for (let i = 0; i < 500; i++) {
+      const text = Array.from({ length: Math.floor(rnd() * 120) }, () => alphabet[Math.floor(rnd() * alphabet.length)]).join("");
+      const out = parseCodeText(text);
+      for (const c of out) expect(c).toMatch(/^[A-Z0-9][A-Z0-9.-]{0,11}$/);
+      expect(new Set(out).size).toBe(out.length);
+    }
+    expect(parseCodeText("__proto__ constructor toString")).toEqual([]);
   });
 });
 

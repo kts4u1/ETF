@@ -75,7 +75,7 @@ function Shell() {
             {NAV.map((n, i) => (
               <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>
                 {NAV_LABEL[i]}
-                {n.name === "basket" && basket.count > 0 && <span className="nav-count" aria-label={tr(`${basket.count}개 담김`, `${basket.count} in basket`)}>{basket.count}</span>}
+                {n.name === "basket" && basket.count > 0 && <><span className="sr-only">{tr(` (${basket.count}개 담김)`, ` (${basket.count} in basket)`)}</span><span className="nav-count" aria-hidden>{basket.count}</span></>}
               </a>
             ))}
           </nav>

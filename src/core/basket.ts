@@ -95,43 +95,62 @@ export function setNote(items: readonly BasketItem[], code: string, note: string
 
 // ───────── 가져오기(붙여넣은 텍스트·링크의 코드 목록) ─────────
 
+/** 국내 ETF 코드 모양: 6자 영숫자(대문자)에 숫자가 하나 이상(0219E0, 069500 …). "(H)" 같은 이름 속 괄호나 영어 단어와 구별하는 데 쓴다 */
+const KR_LIKE = /^(?=[0-9A-Z]*\d)[0-9A-Z]{6}$/;
+/** 증권사 글에 자주 나오는 대문자 일반어(티커가 아님): 이름이 섞인 줄에서 티커 후보로 보지 않는다 */
+const NOT_TICKER = new Set(["ETF", "ETN", "ETFS", "ETP", "KRW", "NAV", "NYSE", "NASDAQ", "US", "THE", "AND", "FOR"]);
+/** 코드로 받아들일 수 있는 조각인가: 코드 모양이고, 숫자·점·하이픈뿐이면(가격·수량) 정확히 6자리 숫자일 때만 */
+const validCode = (t: string): boolean => CODE_RE.test(t) && (!/^[0-9.-]+$/.test(t) || /^\d{6}$/.test(t));
+/** 후보 상한: 장바구니(BASKET_MAX)보다 넉넉히 훑어서, 이름 속 단어가 후보 자리를 차지해도 뒤쪽 코드가 잘리지 않게 한다 */
+const PARSE_MAX = BASKET_MAX * 20;
+
 /**
- * 붙여넣은 텍스트에서 코드 후보를 뽑는다.
- * - 이 앱이 내보낸 요약 글: "이름 (코드)" 줄에서는 이름 뒤 마지막 괄호의 코드만 쓰고(이름 속 "(H)" 같은 괄호나 단어가 우연히 티커와 같아
- *   오인되는 것을 막기 위해), "↳" 로 시작하는 상세·메모 줄과 [제목]·※ 안내 줄은 건너뛴다.
- * - 이 앱이 내보낸 CSV(첫 줄이 code·ticker·코드·티커 로 시작하는 헤더): 헤더를 건너뛰고 줄마다 첫 칸만 코드로 본다.
- * - 그 밖에는 공백·쉼표·세미콜론·탭으로 나눈 각 조각을 코드로 본다(코드만 나열한 목록). 스프레드시트에서 복사한 "코드<탭>이름<탭>…" 행은 첫 칸만.
- * 코드로 볼 수 없는 조각은 버리고, 중복은 한 번만, 최대 BASKET_MAX*2 개에서 멈춘다.
+ * 붙여넣은 텍스트에서 코드 후보를 뽑는다. 이 앱의 내보내기 글·CSV 와 증권사 관심종목 복사 글을 모두 읽으려고 줄마다 이렇게 본다.
+ * 0) "[제목]"·"#"·"※"·"*"·"†"·"↳"(상세·메모) 줄은 건너뛴다.
+ * 1) CSV(첫 줄이 code·ticker·코드·티커 헤더): 헤더를 건너뛰고 줄마다 첫 칸만(엑셀의 ="069500" 표기도 벗긴다).
+ * 2) 탭으로 나뉜 행(스프레드시트): 첫 칸이 코드이고 다른 칸이 코드가 아니면 첫 칸만.
+ * 3) 줄의 조각이 모두 코드 모양이면(코드만 나열한 줄) 전부.
+ * 4) 그 밖에 이름이 섞인 줄: 국내 코드 모양(6자, 숫자 포함) 조각이 있으면 그것만, 없으면 이름 뒤 마지막 괄호의 2자 이상 코드("… (SPY)"),
+ *    그것도 없으면 원문이 대문자·숫자인 조각만(Bond·Year 같은 일반 단어가 우연히 티커와 같아 오인되는 것을 막는다).
+ * 숫자만 있는 조각은 6자리일 때만 코드로 본다(가격·거래량 제외). 중복은 한 번만, 후보는 PARSE_MAX 개에서 멈춘다.
+ * 그래도 이름 속 단어가 티커와 겹칠 수 있어, 화면은 담기 전에 미리보기로 확인을 받는다.
  */
 export function parseCodeText(text: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  const strip = (c: string) => c.replace(/^["'$]+|["']+$/g, "").trim();
+  const strip = (c: string) => c.replace(/^=?["'$]+|["']+$/g, "").trim();
   const push = (raw: string) => {
     const t = strip(raw);
-    if (!CODE_RE.test(t)) return;
+    if (!validCode(t)) return;
     const c = normalizeCode(t);
     if (seen.has(c)) return;
     seen.add(c);
     out.push(c);
   };
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const csvMode = lines.length > 0 && /^(code|ticker|코드|티커)\s*[,;\t]/i.test(lines[0]!);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+  const headerRe = /^(code|ticker|코드|티커)\s*[,;\t]/i;
+  const csvMode = lines.length > 0 && headerRe.test(lines[0]!);
   for (const l of lines) {
-    if (/^[#[※*↳]/.test(l)) continue; // 주석, [제목], ※ 안내, "↳" 상세·메모 줄
+    if (/^[#[※*†↳]/.test(l)) continue;
     if (csvMode) {
-      if (!/^(code|ticker|코드|티커)\s*[,;\t]/i.test(l)) push(l.split(/[,;\t]/)[0]!);
+      if (!headerRe.test(l)) push(l.split(/[,;\t]/)[0]!);
     } else {
-      const cells = l.split(/[,;\t]/).map((c) => c.trim());
-      if (l.includes("\t") && cells.length >= 2 && CODE_RE.test(strip(cells[0]!)) && !cells.every((c) => CODE_RE.test(strip(c)))) {
-        push(cells[0]!); // 스프레드시트 행("코드<탭>이름<탭>…"): 첫 칸이 코드(이름 속 괄호는 보지 않는다)
+      const body = l.replace(/^\d+[.)]\s+/, ""); // "1. 이름 (코드)" 같은 번호 목록의 번호
+      const cells = body.split(/[,;\t]/).map((c) => c.trim());
+      const tokens = body.split(/[\s,;|()]+/).map(strip).filter(Boolean);
+      if (body.includes("\t") && cells.length >= 2 && CODE_RE.test(strip(cells[0]!)) && !cells.every((c) => CODE_RE.test(strip(c)))) {
+        push(cells[0]!);
+      } else if (tokens.length > 0 && !body.includes("(") && tokens.every(validCode)) {
+        for (const t of tokens) push(t); // 코드만 나열한 줄
       } else {
-        const paren = [...l.matchAll(/\(([A-Za-z0-9][A-Za-z0-9.-]{0,11})\)/g)];
-        if (paren.length) push(paren[paren.length - 1]![1]!); // "이름 (코드)": 이름 뒤 마지막 괄호가 코드
-        else for (const tok of l.split(/[\s,;|]+/)) push(tok); // 코드만 나열한 줄
+        const kr = tokens.filter((t) => KR_LIKE.test(t.toUpperCase()));
+        const paren = [...body.matchAll(/\(([A-Za-z0-9][A-Za-z0-9.-]{1,11})\)/g)];
+        if (kr.length) for (const t of kr) push(t);
+        else if (paren.length) push(paren[paren.length - 1]![1]!);
+        else for (const t of tokens) if (/^[A-Z0-9][A-Z0-9.-]*$/.test(t) && !NOT_TICKER.has(t)) push(t);
       }
     }
-    if (out.length >= BASKET_MAX * 2) break;
+    if (out.length >= PARSE_MAX) break;
   }
   return out;
 }

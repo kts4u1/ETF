@@ -8,11 +8,13 @@ export function readJson<T>(key: string): T | null {
   }
 }
 
-export function writeJson(key: string, value: unknown): void {
+/** 저장에 성공하면 true. 실패(차단·시크릿 모드·용량 초과)해도 앱은 계속 동작해야 하므로 던지지 않지만, 알려야 하는 호출부는 반환값을 본다 */
+export function writeJson(key: string, value: unknown): boolean {
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* 저장 실패는 무시 */
+    return false;
   }
 }
 
