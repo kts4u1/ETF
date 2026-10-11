@@ -217,6 +217,7 @@ export function Method() {
       <section className="card" aria-labelledby="m2">
         <h2 id="m2">{tr(`2단계 · ${FACTOR_KEYS.length}개 항목을 0~100으로 점수화`, `Step 2 · Score ${FACTOR_KEYS.length} factors from 0 to 100`)}</h2>
         <p>{isEn() ? (<>Scores use each ETF&apos;s <b>rank (percentile)</b> among the candidates, so a few surging funds do not distort the scoring. Candidates reflect the <b>listing market</b> chosen above, so changing the market filter changes the same ETF&apos;s score (because the comparison group changes).</>) : (<>후보들 사이에서의 <b>순위(백분위)</b>로 계산하므로, 몇몇 종목이 폭등해도 점수 체계가 왜곡되지 않습니다. 후보에는 위에서 고른 <b>상장 시장</b>이 반영되므로, 시장 필터를 바꾸면 같은 ETF의 점수도 달라집니다(비교 대상이 달라지기 때문).</>)}</p>
+        <div className="table-wrap">
         <table className="table">
           <thead><tr><th>{tr("항목", "Factor")}</th><th>{tr("무엇을 보나", "What it looks at")}</th><th className="num">{tr("현재 가중치", "Current weight")}<small>({PROFILES[prefs.profile].label}·{HORIZONS[prefs.horizon].label})</small></th></tr></thead>
           <tbody>
@@ -229,6 +230,7 @@ export function Method() {
             ))}
           </tbody>
         </table>
+        </div>
         <p className="hint">{isEn() ? (<>Cost: 0% expense ratio = 100 points, 0.7% or more = 0 points. Reliability uses a log scale of net assets and trading value. Among ETFs tracking the same index, only the highest-scoring one is shown as the representative. Returns are based on dividend-adjusted prices (total return), and periods are calendar-based (1, 3, 6 months; 1, 3, 5 years).</>) : (<>비용은 총보수 0%=100점·0.7%↑=0점. 신뢰는 순자산·거래대금의 로그 스케일. 같은 지수 ETF는 점수가 가장 높은 하나만 대표로 노출합니다. 수익률은 분배금이 보정된 수정주가(총수익) 기준이고 기간은 달력(1·3·6개월, 1·3·5년) 기준입니다.</>)}</p>
       </section>
 
