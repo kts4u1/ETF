@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { RISK_FREE } from "./metrics";
 import type { Exposure } from "./overlap";
 import { overlapPct } from "./overlap";
@@ -318,20 +319,20 @@ export function roleOf(etf: EtfRecord): string {
   switch (etf.tax.assetClass) {
     case "kr-equity":
     case "global-equity":
-      return "성장(주식)";
+      return tr("성장(주식)", "Growth (equity)");
     case "bond":
-      return "안정(채권)";
+      return tr("안정(채권)", "Stability (bonds)");
     case "cash":
-      return "현금성(파킹)";
+      return tr("현금성(파킹)", "Cash-like (parking)");
     case "commodity":
     case "fx":
-      return "대체(원자재·통화)";
+      return tr("대체(원자재·통화)", "Alternative (commodities & currency)");
     case "real-asset":
-      return "부동산·인프라";
+      return tr("부동산·인프라", "REITs & infrastructure");
     case "crypto":
-      return "대체(가상자산)";
+      return tr("대체(가상자산)", "Alternative (crypto)");
     default:
-      return "혼합(주식+채권)";
+      return tr("혼합(주식+채권)", "Multi-asset (equity + bonds)");
   }
 }
 
