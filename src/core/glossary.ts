@@ -1,3 +1,5 @@
+import { getLang } from "./i18n";
+
 export interface GlossaryEntry {
   term: string;
   /** 한 줄 설명 */
@@ -6,7 +8,7 @@ export interface GlossaryEntry {
   long: string;
 }
 
-export const GLOSSARY: GlossaryEntry[] = [
+const GLOSSARY_KO: GlossaryEntry[] = [
   { term: "ETF", short: "거래소에서 주식처럼 사고파는 펀드", long: "여러 종목(주식·채권·원자재 등)을 한 바구니에 담아 만든 펀드를 주식처럼 실시간으로 거래할 수 있게 한 상품입니다. 예를 들어 'S&P500 ETF' 한 주를 사면 미국 대형주 500개에 분산 투자하는 효과가 있습니다." },
   { term: "총보수", short: "매년 자산에서 자동으로 빠지는 운용 비용", long: "ETF를 보유하는 동안 운용사에 내는 연 비용입니다. 가격에 이미 반영되어 따로 청구되지 않아 눈에 안 띕니다. 연 0.5%면 1,000만원당 연 5만원이며, 장기 투자일수록 복리로 누적됩니다. 같은 지수를 추종하는 ETF라면 총보수가 낮은 쪽이 유리합니다." },
   { term: "NAV (순자산가치)", short: "ETF 한 주가 담고 있는 자산의 실제 가치", long: "ETF가 보유한 자산을 모두 합쳐 주식 수로 나눈 값입니다. 시장 가격은 보통 NAV에 가깝게 움직입니다." },
