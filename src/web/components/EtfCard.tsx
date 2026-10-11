@@ -10,6 +10,7 @@ import { useApp, useSeries } from "../data";
 import { compareHref, etfHref } from "../router";
 import { sliceSeries } from "../series-utils";
 import { CautionList, Delta, FactorBars, FxNote, RiskPips, TagChips } from "./bits";
+import { BasketButton } from "./BasketButton";
 import { Sparkline } from "./Sparkline";
 
 export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
@@ -71,6 +72,7 @@ export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
               {tr(`같은 지수 ${alts.length + 1}개 비교`, `Compare ${alts.length + 1} on the same index`)}
             </a>
           )}
+          <BasketButton etf={e} />
           <a className="btn" href={etfHref(e.code)}>{tr("상세 보기", "View detail")}</a>
         </span>
       </footer>

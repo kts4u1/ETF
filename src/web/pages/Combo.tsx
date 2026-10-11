@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { BASKET_MAX } from "../../core/basket";
 import { explainProposal, ASSET_CLASS_LABEL } from "../../core/explain";
 import { fmtRatio } from "../../core/format";
 import { isEn, tr } from "../../core/i18n";
@@ -9,6 +10,7 @@ import { isOverseas } from "../../core/market";
 import { fxNote } from "../../core/market-view";
 import { HORIZONS, PROFILES } from "../../core/scoring";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
+import { useBasket } from "../basket";
 import { Controls } from "../components/Controls";
 import { LineChart } from "../components/LineChart";
 import { useApp, useBacktest, useHoldings, useSeries, type ComboCell } from "../data";
@@ -124,8 +126,11 @@ function ValidationLines({ size }: { size: 2 | 3 }) {
 
 function ProposalCard({ p, index }: { p: Proposal; index: number }) {
   const { byCode } = useApp();
+  const basket = useBasket();
   const { data: series } = useSeries();
   const ex = explainProposal(p, (c) => byCode.get(c));
+  const memberEtfs = p.members.map((m) => m.cand.etf);
+  const missing = memberEtfs.filter((e) => !basket.has(e.code));
   const weeks = p.stats.weeks;
 
   // 차트: 조합과 구성 ETF를 같은 시작점(=100)에서
@@ -180,6 +185,12 @@ function ProposalCard({ p, index }: { p: Proposal; index: number }) {
       </dl>
 
       <ul className="reasons">{ex.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+      <p className="combo-basket">
+        <button type="button" className="btn ghost" disabled={missing.length === 0 || basket.count + missing.length > BASKET_MAX} onClick={() => basket.add(memberEtfs)}>
+          {missing.length === 0 ? tr("✓ 이 조합 모두 장바구니에 담김", "✓ All in basket") : tr(`＋ 이 조합 ${missing.length}개 장바구니에 담기`, `＋ Add these ${missing.length} to basket`)}
+        </button>
+        {missing.length > 0 && basket.count + missing.length > BASKET_MAX && <span className="muted"> {tr(`장바구니가 가득 찼어요(최대 ${BASKET_MAX}개)`, `Basket is full (max ${BASKET_MAX})`)}</span>}
+      </p>
       {p.members.some((m) => isOverseas(m.cand.etf)) && <FxNote>{fxNote()} — {tr("해외(미국) 상장 ETF가 포함되어 위 변동성·낙폭·차트에 환율 변동이 들어 있습니다.", "this includes US-listed ETFs, so the volatility, drawdown and chart above include currency moves.")}</FxNote>}
 
       {chart ? (
