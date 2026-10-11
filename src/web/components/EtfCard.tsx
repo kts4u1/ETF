@@ -1,7 +1,7 @@
 import { cautions, explain, typeLine } from "../../core/explain";
 import { fmtFee, fmtRatio } from "../../core/format";
 import { isOverseas } from "../../core/market";
-import { FX_NOTE, aumText, listingLine } from "../../core/market-view";
+import { aumText, fxNote, listingLine } from "../../core/market-view";
 import { mddOf } from "../../core/scoring";
 import type { Scored } from "../../core/types";
 import { useApp, useSeries } from "../data";
@@ -55,7 +55,7 @@ export function EtfCard({ s, rank }: { s: Scored; rank: number }) {
         <div><dt>순자산</dt><dd>{aumText(e)}</dd></div>
         <div className="spark-cell"><dt>3년 추이</dt><dd>{spark ? <Sparkline values={spark.values} label={`${e.name} 최근 3년 가격 추이${overseas ? "(원화 환산)" : ""}`} /> : <span className="muted">-</span>}</dd></div>
       </dl>
-      {overseas && <FxNote>{FX_NOTE} — 위 수익률·순자산·추이는 모두 이 환산값 기준입니다.</FxNote>}
+      {overseas && <FxNote>{fxNote()} — 위 수익률·순자산·추이는 모두 이 환산값 기준입니다.</FxNote>}
 
       <footer className="etf-foot">
         <details>

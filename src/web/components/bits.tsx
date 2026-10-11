@@ -1,6 +1,6 @@
 import { ASSET_CLASS_LABEL, RISK_LABEL, TAG_LABEL, riskGrade, type Caution } from "../../core/explain";
 import { MARKET_LABEL, MARKET_SHORT, marketOf } from "../../core/market";
-import { FX_NOTE } from "../../core/market-view";
+import { fxNote } from "../../core/market-view";
 import { FACTOR_KEYS, FACTOR_LABELS } from "../../core/scoring";
 import type { EtfRecord, FactorScores } from "../../core/types";
 
@@ -19,7 +19,7 @@ export function MarketBadge({ etf }: { etf: Pick<EtfRecord, "market"> }) {
 
 /** 해외(미국) 상장 ETF의 수치가 원화 환산값임을 밝히는 한 줄 */
 export function FxNote({ children }: { children?: React.ReactNode }) {
-  return <p className="fx-note" role="note">{children ?? FX_NOTE}</p>;
+  return <p className="fx-note" role="note">{children ?? fxNote()}</p>;
 }
 
 /** 위험 등급 5칸 미터. 색이 아니라 채워진 칸 수 + 텍스트 라벨로 전달한다. */

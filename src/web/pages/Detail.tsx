@@ -3,7 +3,7 @@ import type { EtfRecord } from "../../core/types";
 import { cautions, explain, indexTrackingSentence, structureNotes, taxNote, typeLine } from "../../core/explain";
 import { feeWonPer10M, fmtDate, fmtFee, fmtHistory, fmtPercentUnit, fmtRatio, fmtWon, priceParts } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
-import { FX_NOTE, aumText, listingLine } from "../../core/market-view";
+import { aumText, fxNote, listingLine } from "../../core/market-view";
 import { mddOf, sameGroup, volOf } from "../../core/scoring";
 import { CautionList, Delta, Disclaimer, FactorBars, FxNote, MarketBadge, RiskPips, TagChips } from "../components/bits";
 import { HoldingsSection } from "../components/Holdings";
@@ -59,7 +59,7 @@ export function Detail({ code }: { code: string | null }) {
           )}
           <span className="muted">전일 대비{overseas ? "(달러 기준)" : ""} {e.changeRate === null ? "-" : <span className={e.changeRate > 0 ? "up" : e.changeRate < 0 ? "down" : ""}>{fmtPercentUnit(e.changeRate, 2, true)}</span>}</span>
           <span className="muted">{fmtDate(m.asOf)} 종가{overseas ? " · 현지 거래일 기준" : ""}</span>
-          {overseas && <span className="muted">{FX_NOTE}</span>}
+          {overseas && <span className="muted">{fxNote()}</span>}
         </div>
       </header>
 
@@ -121,7 +121,7 @@ export function Detail({ code }: { code: string | null }) {
             <div><dt>샤프지수 ({m.sharpe3y !== null ? "3년" : "1년"})</dt><dd>{(m.sharpe3y ?? m.sharpe1y)?.toFixed(2) ?? "-"}</dd></div>
           </dl>
           <p className="hint">변동성 기준 위험: {volOf(e) === null ? "정보 없음" : `연 ${fmtRatio(volOf(e), 0)}`}. 수익률은 분배금이 보정된 수정주가 기준입니다.</p>
-          {overseas && <FxNote>{FX_NOTE}. 순자산은 달러 순자산에 기준일 환율을, 거래대금은 거래일 환율을 곱했고, 변동성·최대낙폭·수익률에는 환율 변동이 그대로 들어 있습니다.</FxNote>}
+          {overseas && <FxNote>{fxNote()}. 순자산은 달러 순자산에 기준일 환율을, 거래대금은 거래일 환율을 곱했고, 변동성·최대낙폭·수익률에는 환율 변동이 그대로 들어 있습니다.</FxNote>}
         </section>
       </div>
 

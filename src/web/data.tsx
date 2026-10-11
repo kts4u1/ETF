@@ -3,6 +3,7 @@ import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
 import { countByMarket, mergeSavedPrefs, type MarketCounts } from "../core/market-view";
 import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
+import { useLang } from "./lang";
 import { readJson, writeJson } from "./storage";
 
 export interface ComboCell {
@@ -82,6 +83,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [prefs, setPrefsState] = useState<Preferences>(loadPrefs);
+  const { lang } = useLang();
 
   useEffect(() => {
     getJson<Snapshot>("./data/snapshot.json")
@@ -110,7 +112,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const scoreMap = new Map(all.ranked.map((s) => [s.etf.code, s]));
     const excludedBy = new Map(all.excluded.map((x) => [x.etf.code, x.reason]));
     return { byCode, counts, rec, all, scoreMap, excludedBy };
-  }, [snap, prefs]);
+    // lang: 제외 사유 같은 문장이 결과 안에 들어 있어 언어가 바뀌면 다시 계산한다
+  }, [snap, prefs, lang]);
 
   if (error) {
     return (

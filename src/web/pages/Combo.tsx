@@ -4,7 +4,7 @@ import { fmtRatio } from "../../core/format";
 import { exposureOf } from "../../core/overlap";
 import { proposeCombos, roleOf, selectPool, weeklyReturns, type ComboCandidate, type Proposal } from "../../core/portfolio";
 import { isOverseas } from "../../core/market";
-import { FX_NOTE } from "../../core/market-view";
+import { fxNote } from "../../core/market-view";
 import { HORIZONS, PROFILES } from "../../core/scoring";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
 import { Controls } from "../components/Controls";
@@ -170,7 +170,7 @@ function ProposalCard({ p, index }: { p: Proposal; index: number }) {
       </dl>
 
       <ul className="reasons">{ex.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-      {p.members.some((m) => isOverseas(m.cand.etf)) && <FxNote>{FX_NOTE} — 해외(미국) 상장 ETF가 포함되어 위 변동성·낙폭·차트에 환율 변동이 들어 있습니다.</FxNote>}
+      {p.members.some((m) => isOverseas(m.cand.etf)) && <FxNote>{fxNote()} — 해외(미국) 상장 ETF가 포함되어 위 변동성·낙폭·차트에 환율 변동이 들어 있습니다.</FxNote>}
 
       {chart ? (
         <LineChart dates={chart.dates} series={chart.series} yFormat={(v) => v.toFixed(0)} ariaLabel={`조합 ${LETTER[index]}와 구성 ETF의 최근 ${Math.round(weeks / 52 * 10) / 10}년 비교 차트(시작=100)`} height={240} />

@@ -124,6 +124,7 @@ nav a:hover { background: var(--surface-2); text-decoration: none; }
 nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .theme-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
 .theme-btn:hover { background: var(--surface-2); }
+.lang-switch { margin-left: auto; }
 
 /* ───────── 카드/버튼 ───────── */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
@@ -362,6 +363,7 @@ input[type="search"] { width: 100%; }
   /* 좁은 화면: 로고·테마 버튼은 윗줄, 메뉴는 아랫줄 전체 폭 */
   .topbar-in { gap: 4px 12px; padding-bottom: 6px; }
   .brand { order: 1; flex: 1; }
+  .lang-switch { order: 2; margin-left: 0; }
   .theme-btn { order: 2; }
   nav { order: 3; flex: 1 0 100%; }
 }
@@ -379,3 +381,10 @@ input[type="search"] { width: 100%; }
 @media (prefers-reduced-motion: no-preference) {
   .btn, .seg button, .chip-btn { transition: background-color 0.12s, filter 0.12s; }
 }
+
+/* 언어 선택(헤더) */
+.lang-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.lang-switch button { font: inherit; font-size: 13px; padding: 5px 9px; background: transparent; color: var(--text-2, inherit); border: 0; cursor: pointer; }
+.lang-switch button + button { border-left: 1px solid var(--border); }
+.lang-switch button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.lang-switch button:focus-visible { outline: 2px solid var(--accent, #2a78d6); outline-offset: -2px; }

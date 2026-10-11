@@ -1,3 +1,4 @@
+import { setLang, type Lang } from "./i18n";
 import { classify } from "./taxonomy";
 import type { EtfRecord, Metrics } from "./types";
 
@@ -41,3 +42,16 @@ export function makeEtf(over: Omit<Partial<EtfRecord>, "m"> & { m?: Partial<Metr
     m: { ...baseM, ...(over.m ?? {}) },
   };
 }
+
+/** 한 언어로 fn 을 실행하고 한국어(기본)로 되돌린다. 영어 문장 테스트용. */
+export function withLang<T>(lang: Lang, fn: () => T): T {
+  setLang(lang);
+  try {
+    return fn();
+  } finally {
+    setLang("ko");
+  }
+}
+
+/** 영어 화면 문장에 한글이 남아 있으면 안 된다(ETF 이름·운용사 같은 데이터 값은 따로 넘기지 않는다). 남은 한글 조각을 돌려준다. */
+export const hangulIn = (text: string): string[] => text.match(/[가-힣]+/g) ?? [];

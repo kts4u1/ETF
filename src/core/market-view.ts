@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { fmtEok, fmtWon } from "./format";
 import { MARKET_LABEL, US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON, marketOf } from "./market";
 import { DEFAULT_PREFS } from "./scoring";
@@ -56,10 +57,16 @@ export function usCollectionRule(): string {
 /** 순자산 표기. 펀드 전체 합계(aumScope "fund")는 † 를 붙여 ETF 클래스만의 값이 아님을 알린다. */
 export const aumText = (e: Pick<EtfRecord, "aumEok" | "aumScope">): string => `${fmtEok(e.aumEok)}${e.aumScope === "fund" ? "†" : ""}`;
 
-export const AUM_FUND_NOTE = "† 펀드 전체 순자산: 같은 펀드의 뮤추얼펀드 등 다른 클래스까지 합친 값이라 이 ETF만의 규모보다 훨씬 클 수 있습니다(야후 제공값).";
+export const aumFundNote = (): string =>
+  tr(
+    "† 펀드 전체 순자산: 같은 펀드의 뮤추얼펀드 등 다른 클래스까지 합친 값이라 이 ETF만의 규모보다 훨씬 클 수 있습니다(야후 제공값).",
+    "† Fund-level net assets: includes other share classes of the same fund (e.g., the mutual fund), so it can be far larger than this ETF alone (Yahoo data).",
+  );
 
 /** 원화 환산 방식 한 줄. 가격·순자산·차트 근처에 같은 문구로 밝힌다. */
-export const FX_NOTE = "원화 환산: 달러 가격 × 같은 날 원/달러 환율";
+/** 환산 방식(접두사 없이): 문장 중간에 끼워 쓴다 */
+export const fxMethod = (): string => tr("달러 가격 × 같은 날 원/달러 환율", "USD price × same-day USD/KRW rate");
+export const fxNote = (): string => tr(`원화 환산: ${fxMethod()}`, `KRW conversion: ${fxMethod()}`);
 
 /** 해외(미국) 상장 ETF의 거래소·모닝스타 카테고리 한 줄(참고). 국내 상장이면 null. */
 export function listingLine(e: Pick<EtfRecord, "market" | "exchange" | "category">): string | null {

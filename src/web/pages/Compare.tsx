@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { typeLine } from "../../core/explain";
 import { fmtFee, fmtPercentUnit, fmtRatio, fmtWon } from "../../core/format";
 import { MARKET_LABEL, isOverseas, marketOf } from "../../core/market";
-import { AUM_FUND_NOTE, FX_NOTE, aumText, listingLine, matchRank } from "../../core/market-view";
+import { aumFundNote, aumText, fxMethod, fxNote, listingLine, matchRank } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { EtfRecord } from "../../core/types";
 import { Disclaimer, FxNote, MarketBadge } from "../components/bits";
@@ -128,7 +128,7 @@ export function Compare({ codes }: { codes: string[] }) {
                 <p className="hint">공통 시작일 {idx.startDate.slice(0, 4)}-{idx.startDate.slice(4, 6)}-{idx.startDate.slice(6, 8)} 기준. 상장일이 늦은 ETF가 있으면 그 시점부터 비교합니다.</p>
                 {hasOverseas && (
                   <FxNote>
-                    {FX_NOTE}. 해외(미국) 상장 ETF의 선은 환율 변동이 포함된 원화 기준입니다.{hasMixed ? " 국내 상장 ETF와 같은 원화 기준으로 겹쳐 보이지만, 세금·환전·거래시간은 다릅니다." : ""}
+                    {fxNote()}. 해외(미국) 상장 ETF의 선은 환율 변동이 포함된 원화 기준입니다.{hasMixed ? " 국내 상장 ETF와 같은 원화 기준으로 겹쳐 보이지만, 세금·환전·거래시간은 다릅니다." : ""}
                   </FxNote>
                 )}
               </>
@@ -169,8 +169,8 @@ export function Compare({ codes }: { codes: string[] }) {
               </table>
             </div>
             <p className="hint">‘우위’는 해당 행에서 화면에 보이는 값이 가장 유리한 ETF입니다(값이 모두 같으면 표시하지 않음). 행마다 기준이 다르므로 종합 판단은 직접 하세요.</p>
-            {picked.some((p) => p.aumScope === "fund") && <p className="hint">{AUM_FUND_NOTE} 그래서 순자산 행의 ‘우위’ 표시에서는 † 항목을 제외합니다.</p>}
-            {hasOverseas && <FxNote>해외(미국) 상장 ETF의 순자산·거래대금·수익률·변동성·최대낙폭은 {FX_NOTE.replace("원화 환산: ", "")} 기준의 원화 환산값이고, 괴리율은 해외 상장에는 제공하지 않아 ‘-’로 둡니다.</FxNote>}
+            {picked.some((p) => p.aumScope === "fund") && <p className="hint">{aumFundNote()} 그래서 순자산 행의 ‘우위’ 표시에서는 † 항목을 제외합니다.</p>}
+            {hasOverseas && <FxNote>해외(미국) 상장 ETF의 순자산·거래대금·수익률·변동성·최대낙폭은 {fxMethod()} 기준의 원화 환산값이고, 괴리율은 해외 상장에는 제공하지 않아 ‘-’로 둡니다.</FxNote>}
           </section>
         </>
       )}

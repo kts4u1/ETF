@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ASSET_CLASS_LABEL, REGION_LABEL, TAG_LABEL } from "../../core/explain";
 import { fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
 import { isOverseas, marketOf } from "../../core/market";
-import { AUM_FUND_NOTE, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
+import { aumFundNote, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { AssetClass, EtfRecord, MarketFilter, Region } from "../../core/types";
 import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
@@ -159,7 +159,7 @@ export function Explore() {
                   <td className="num">{fmtRatio(volOf(e), 0)}</td>
                   <td className="num">{fmtRatio(mddOf(e), 0)}</td>
                   <td className="num">{fmtFee(e.fee)}</td>
-                  <td className="num" title={e.aumScope === "fund" ? AUM_FUND_NOTE : undefined}>{aumText(e)}</td>
+                  <td className="num" title={e.aumScope === "fund" ? aumFundNote() : undefined}>{aumText(e)}</td>
                   <td className="num">{fmtWon(e.m.avgValue20)}</td>
                   <td className="num">{fmtHistory(e.m.years, e.m.days)}</td>
                 </tr>
@@ -168,7 +168,7 @@ export function Explore() {
           </tbody>
         </table>
       </div>
-      {rows.slice(0, shown).some((e) => e.aumScope === "fund") && <p className="hint">{AUM_FUND_NOTE} 순자산 정렬에서는 † 항목을 맨 뒤로 보냅니다.</p>}
+      {rows.slice(0, shown).some((e) => e.aumScope === "fund") && <p className="hint">{aumFundNote()} 순자산 정렬에서는 † 항목을 맨 뒤로 보냅니다.</p>}
       {rows.length === 0 && <div className="card empty">조건에 맞는 ETF가 없습니다.</div>}
       {shown < rows.length && (
         <p className="more"><button type="button" className="btn ghost" onClick={() => setShown((n) => n + PAGE)}>더 보기 ({Math.min(PAGE, rows.length - shown)}개)</button></p>

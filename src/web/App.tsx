@@ -8,6 +8,7 @@ import { Explore } from "./pages/Explore";
 import { Home } from "./pages/Home";
 import { Learn } from "./pages/Learn";
 import { Method } from "./pages/Method";
+import { LangProvider, LangSwitch, useLang } from "./lang";
 import { href, useRoute } from "./router";
 import { readText, writeText } from "./storage";
 
@@ -60,6 +61,7 @@ function Shell() {
               <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>{n.label}</a>
             ))}
           </nav>
+          <LangSwitch />
           <button type="button" className="theme-btn" onClick={cycleTheme} title="화면 테마 전환" aria-label={`화면 테마: ${theme === "auto" ? "시스템" : theme === "dark" ? "다크" : "라이트"} (누르면 전환)`}>
             {theme === "auto" ? "◐ 자동" : theme === "dark" ? "☾ 다크" : "☀ 라이트"}
           </button>
@@ -74,10 +76,18 @@ function Shell() {
   );
 }
 
+/** 언어가 바뀌면 화면 트리를 새로 만들어, 이전 언어로 계산해 둔 문장(useMemo 등)이 남지 않게 한다. 데이터는 DataProvider 에 그대로 있다. */
+function Localized() {
+  const { lang } = useLang();
+  return <Shell key={lang} />;
+}
+
 export function App() {
   return (
-    <DataProvider>
-      <Shell />
-    </DataProvider>
+    <LangProvider>
+      <DataProvider>
+        <Localized />
+      </DataProvider>
+    </LangProvider>
   );
 }

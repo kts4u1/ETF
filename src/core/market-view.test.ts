@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON } from "./market";
 import {
-  AUM_FUND_NOTE,
+  aumFundNote,
   MARKET_FILTERS,
   MARKET_FILTER_LABEL,
   aumText,
@@ -164,7 +164,7 @@ describe("순자산 표기(aumText)", () => {
     expect(aumText({ aumEok: 3_100, aumScope: "fund" })).toBe("3,100억†");
   });
   it("† 설명 문구가 있다", () => {
-    expect(AUM_FUND_NOTE).toContain("†");
-    expect(AUM_FUND_NOTE).toContain("펀드 전체");
+    expect(aumFundNote()).toContain("†");
+    expect(aumFundNote()).toContain("펀드 전체");
   });
 });
