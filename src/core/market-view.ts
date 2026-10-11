@@ -1,4 +1,4 @@
-import { tr } from "./i18n";
+import { fmtNum, langRecord, tr } from "./i18n";
 import { fmtEok, fmtWon } from "./format";
 import { MARKET_LABEL, US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON, marketOf } from "./market";
 import { DEFAULT_PREFS } from "./scoring";
@@ -13,11 +13,10 @@ import type { EtfRecord, Exclusion, ExclusionCode, Market, MarketFilter, Prefere
 
 export const MARKET_FILTERS: MarketFilter[] = ["all", "KR", "US"];
 
-export const MARKET_FILTER_LABEL: Record<MarketFilter, string> = {
-  all: "전체",
-  KR: MARKET_LABEL.KR,
-  US: MARKET_LABEL.US,
-};
+export const MARKET_FILTER_LABEL: Record<MarketFilter, string> = langRecord<MarketFilter>(
+  { all: "전체", KR: "국내 상장", US: "해외(미국) 상장" },
+  { all: "All", KR: "Korea-listed", US: "US-listed" },
+);
 
 export const isMarketFilter = (v: unknown): v is MarketFilter => v === "all" || v === "KR" || v === "US";
 
@@ -45,13 +44,18 @@ export function countByMarket(etfs: Pick<EtfRecord, "market">[]): MarketCounts {
 
 /** "국내 상장 ETF 1,172개" / "국내 상장 ETF 1,172개와 해외(미국) 상장 ETF 1,204개". 0개인 시장은 말하지 않는다. */
 export function describeCounts(counts: MarketCounts): string {
-  const parts = (["KR", "US"] as const).filter((m) => counts[m] > 0).map((m) => `${MARKET_LABEL[m]} ETF ${counts[m].toLocaleString("ko-KR")}개`);
-  return parts.length ? parts.join("와 ") : "ETF 0개";
+  const parts = (["KR", "US"] as const)
+    .filter((m) => counts[m] > 0)
+    .map((m) => tr(`${MARKET_LABEL[m]} ETF ${fmtNum(counts[m])}개`, `${fmtNum(counts[m])} ${MARKET_LABEL[m]} ETFs`));
+  return parts.length ? parts.join(tr("와 ", " and ")) : tr("ETF 0개", "0 ETFs");
 }
 
 /** 해외(미국) 상장 수집 기준 안내. 숫자는 수집기와 같은 상수에서 가져온다. */
 export function usCollectionRule(): string {
-  return `해외(미국) 상장은 순자산 ${fmtEok(US_MIN_AUM_EOK)}원·일평균 거래대금 ${fmtWon(US_MIN_AVG_VALUE_WON)}원 이상만 수집합니다`;
+  return tr(
+    `해외(미국) 상장은 순자산 ${fmtEok(US_MIN_AUM_EOK)}원·일평균 거래대금 ${fmtWon(US_MIN_AVG_VALUE_WON)}원 이상만 수집합니다`,
+    `US-listed ETFs are collected only with net assets of at least ${fmtEok(US_MIN_AUM_EOK)} and average daily trading value of at least ${fmtWon(US_MIN_AVG_VALUE_WON)}`,
+  );
 }
 
 /** 순자산 표기. 펀드 전체 합계(aumScope "fund")는 † 를 붙여 ETF 클래스만의 값이 아님을 알린다. */
@@ -71,7 +75,7 @@ export const fxNote = (): string => tr(`원화 환산: ${fxMethod()}`, `KRW conv
 /** 해외(미국) 상장 ETF의 거래소·모닝스타 카테고리 한 줄(참고). 국내 상장이면 null. */
 export function listingLine(e: Pick<EtfRecord, "market" | "exchange" | "category">): string | null {
   if (marketOf(e) === "KR") return null;
-  const parts = [e.exchange ?? null, e.category ? `모닝스타 ${e.category}(참고)` : null].filter((x): x is string => !!x);
+  const parts = [e.exchange ?? null, e.category ? tr(`모닝스타 ${e.category}(참고)`, `Morningstar ${e.category} (for reference)`) : null].filter((x): x is string => !!x);
   return parts.length ? parts.join(" · ") : null;
 }
 

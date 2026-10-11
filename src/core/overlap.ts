@@ -10,6 +10,8 @@
  * 저장하므로 여기서는 이미 풀린 비중을 그대로 쓴다.
  */
 
+import { tr } from "./i18n";
+
 export interface Exposure {
   /** 식별 가능한 보유 자산의 순자산 대비 합(%) — 상위 N개만 저장해도 전체 합을 보존 */
   total: number;
@@ -74,10 +76,10 @@ export function topWeight(e: Exposure, n: number): number {
 
 /** 겹침 수준을 사람이 읽는 말로 */
 export function overlapLevel(pct: number): { label: string; level: "high" | "mid" | "low" } {
-  if (pct >= 50) return { label: "매우 비슷함", level: "high" };
-  if (pct >= 25) return { label: "상당히 겹침", level: "mid" };
-  if (pct >= 10) return { label: "일부 겹침", level: "low" };
-  return { label: "거의 안 겹침", level: "low" };
+  if (pct >= 50) return { label: tr("매우 비슷함", "Very similar"), level: "high" };
+  if (pct >= 25) return { label: tr("상당히 겹침", "Substantial overlap"), level: "mid" };
+  if (pct >= 10) return { label: tr("일부 겹침", "Some overlap"), level: "low" };
+  return { label: tr("거의 안 겹침", "Little overlap"), level: "low" };
 }
 
 /** 대칭 행렬(대각선 100). exposures 가 undefined 인 항목은 NaN 으로 표시한다(계산 불가). */
