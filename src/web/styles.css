@@ -366,6 +366,8 @@ input[type="search"] { width: 100%; }
   .lang-switch { order: 2; margin-left: 0; }
   .theme-btn { order: 2; }
   nav { order: 3; flex: 1 0 100%; }
+  /* 영어 메뉴 이름(Compare·Combos 등)이 한 줄에 다 들어가도록 좌우 여백을 줄인다 */
+  nav a { padding: 8px 9px; }
 }
 @media (max-width: 520px) {
   /* 5년 수익률이 세 자리(+107.7%)여도 칸 안에서 "%" 가 떨어져 나가지 않게 */

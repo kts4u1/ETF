@@ -3,6 +3,7 @@ import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
 import { countByMarket, mergeSavedPrefs, type MarketCounts } from "../core/market-view";
 import type { HoldingsFile } from "../core/overlap";
 import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
+import { tr } from "../core/i18n";
 import { useLang } from "./lang";
 import { readJson, writeJson } from "./storage";
 
@@ -118,15 +119,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   if (error) {
     return (
       <div className="state-box" role="alert">
-        <h2>데이터를 불러오지 못했습니다</h2>
+        <h2>{tr("데이터를 불러오지 못했습니다", "Could not load the data")}</h2>
         <p>{error}</p>
         <p>
-          처음 실행이라면 터미널에서 <code>npm run sync</code> 로 ETF 데이터를 먼저 수집해 주세요.
+          {tr("처음 실행이라면 터미널에서 ", "If this is your first run, collect the ETF data first with ")}<code>npm run sync</code>{tr(" 로 ETF 데이터를 먼저 수집해 주세요.", " in a terminal.")}
         </p>
       </div>
     );
   }
-  if (!snap || !derived) return <div className="state-box">ETF 데이터를 불러오는 중…</div>;
+  if (!snap || !derived) return <div className="state-box">{tr("ETF 데이터를 불러오는 중…", "Loading ETF data…")}</div>;
 
   const value: AppData = {
     snap,
