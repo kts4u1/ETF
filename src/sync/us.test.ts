@@ -12,6 +12,7 @@ import {
   aumEokFromUsd,
   avgTradedValueWon,
   buildFxTable,
+  buildUsIndex,
   buildUsRecord,
   exchangeLabel,
   fetchNasdaqList,
@@ -69,6 +70,8 @@ describe("parseNasdaqList", () => {
     expect(r.total).toBe(12);
     expect(r.badTicker).toBe(5);
     expect(r.etnExcluded).toBe(2);
+    // 뺀 ETN 도 이름 색인에 쓰도록 티커·이름을 남긴다
+    expect(r.etnRows?.map((x) => x.symbol)).toEqual(["VXX", "DULL"]);
     expect(r.dataAsOf).toBe("10/9/2026 8:00:00 PM");
   });
 
@@ -468,6 +471,11 @@ describe("syncUs", () => {
     expect(aaa.market).toBe("US");
     expect(aaa.price).toBe(Math.round(aaa.priceNative! * 1300));
     expect(logs.some((l) => l.includes("1차 필터"))).toBe(true);
+    // 수집 기준을 못 넘은 종목은 사유와 함께 색인용으로 남는다(실패한 종목은 failed 에만 있고 여기에는 없다)
+    const reasonOf = Object.fromEntries(r.notCollected.map((x) => [x.symbol, x.reason]));
+    expect(reasonOf).toEqual({ BBB: "low-trading", CCC: "small-aum", DDD: "no-data", EEE: "etn", FFF: "no-aum", GGG: "short", III: "no-data" });
+    // 수집된 종목과 색인은 서로 겹치지 않고 합치면 후보 전체다
+    expect(r.etfs.length + r.notCollected.length).toBe(9);
     expect(logs.some((l) => l.includes("2차 필터"))).toBe(true);
     expect(logs.at(-1)).toContain("미국 ETF 2개");
   });
@@ -597,6 +605,29 @@ describe("syncUs", () => {
     it("선별 결과가 0개면 중단", async () => {
       const { deps } = makeDeps(["AAA", "BBB"], { AAA: { shape: { vol: 1 } }, BBB: { shape: { vol: 1 } } });
       await expect(run(deps)).rejects.toThrow(/0개/);
+    });
+  });
+});
+
+describe("buildUsIndex: 수집하지 않은 종목의 검색 색인", () => {
+  it("티커 순으로 정렬하고 같은 티커는 한 번만 담는다", () => {
+    const idx = buildUsIndex(
+      [
+        { symbol: "ZZZ", name: "Z fund", reason: "small-aum" },
+        { symbol: "AAA", name: "A fund", reason: "short" },
+        { symbol: "AAA", name: "A fund again", reason: "etn" },
+        { symbol: "MMM", name: "M fund", reason: "low-trading" },
+      ],
+      "20261009",
+    );
+    expect(idx).toEqual({
+      version: 1,
+      asOf: "20261009",
+      etfs: [
+        ["AAA", "A fund", "short"],
+        ["MMM", "M fund", "low-trading"],
+        ["ZZZ", "Z fund", "small-aum"],
+      ],
     });
   });
 });

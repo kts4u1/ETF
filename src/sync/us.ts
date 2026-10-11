@@ -14,7 +14,7 @@ import { HISTORY_LIMIT_DAYS } from "../core/format";
 import { US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON } from "../core/market";
 import { cleanSeries, computeMetrics, indexOnOrBefore, shiftMonths } from "../core/metrics";
 import { classifyUs } from "../core/taxonomy-us";
-import type { EtfRecord, PriceSeries } from "../core/types";
+import type { EtfRecord, PriceSeries, UsIndexFile, UsSkipReason } from "../core/types";
 import { cachedJson } from "./cache";
 import { HttpError, withRetry } from "./naver";
 import { mapPool } from "./pool";
@@ -51,6 +51,8 @@ export interface NasdaqList {
   badTicker: number;
   /** 이름에 ETN 이 있어 뺀 수 */
   etnExcluded: number;
+  /** 뺀 ETN 의 티커·이름(검색 색인용). 이전 캐시에는 없을 수 있다 */
+  etnRows?: { symbol: string; name: string }[];
 }
 
 export const NASDAQ_LIST_URL = "https://api.nasdaq.com/api/screener/etf?download=true";
@@ -77,6 +79,7 @@ export function parseNasdaqList(json: unknown, minRows = NASDAQ_MIN_ROWS): Nasda
     total: rows.length,
     badTicker: 0,
     etnExcluded: 0,
+    etnRows: [],
   };
   const seen = new Set<string>();
   let withSymbol = 0;
@@ -92,6 +95,7 @@ export function parseNasdaqList(json: unknown, minRows = NASDAQ_MIN_ROWS): Nasda
     const name = typeof r.companyName === "string" ? r.companyName.trim() : "";
     if (isEtnName(name)) {
       out.etnExcluded++;
+      out.etnRows?.push({ symbol, name });
       continue;
     }
     out.rows.push({ symbol, name });
@@ -357,6 +361,23 @@ export interface UsSyncResult {
   /** 종목별 실패 사유("티커 (단계: 사유)") */
   failed: string[];
   stats: UsStats;
+  /** 수집 기준을 못 넘어 데이터에 들지 못한 종목(검색 색인용). 실패한 종목은 failed 에 있고 여기에는 없다 */
+  notCollected: { symbol: string; name: string; reason: UsSkipReason }[];
+}
+
+/**
+ * 수집하지 않은 종목의 이름 색인(public/data/us-index.json). 점수·지표 없이 "검색은 되지만 데이터에는 없음"을 알리는 용도라
+ * 새로 상장한 소형 ETF도 검색에 나타난다. 티커 순, 같은 티커는 한 번만.
+ */
+export function buildUsIndex(notCollected: UsSyncResult["notCollected"], asOf: string): UsIndexFile {
+  const seen = new Set<string>();
+  const etfs: UsIndexFile["etfs"] = [];
+  for (const r of [...notCollected].sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0))) {
+    if (seen.has(r.symbol)) continue;
+    seen.add(r.symbol);
+    etfs.push([r.symbol, r.name, r.reason]);
+  }
+  return { version: 1, asOf, etfs };
 }
 
 /** 한 단계의 종목별 실패가 후보의 10% 를 넘으면 중단 */
@@ -378,6 +399,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   for (const sub of ["quick", "info", "price"]) await mkdir(join(dir, sub), { recursive: true });
   const nowUnix = Math.floor((opts.nowMs ?? Date.now()) / 1000);
   const failed: string[] = [];
+  const notCollected: UsSyncResult["notCollected"] = [];
 
   const progress = (label: string) => {
     let last = 0;
@@ -400,6 +422,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   log("미국 상장 ETF 목록 수집 중(나스닥)…");
   const list = await must("나스닥 ETF 목록", () => cachedJson(join(dir, "list.json"), force, () => deps.fetchNasdaqList()));
   log(`  목록 ${list.total}행 → 후보 ${list.rows.length}개 (티커 형식 불량 ${list.badTicker}, ETN ${list.etnExcluded} 제외)`);
+  for (const r of list.etnRows ?? []) notCollected.push({ symbol: r.symbol, name: r.name, reason: "etn" });
 
   log("환율(원/달러) 수집 중…");
   const fx = await must("환율", async () => {
@@ -457,6 +480,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
     const chart = quickRun.results[i];
     if (!chart) {
       stats.quick.notFound++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "no-data" });
       return;
     }
     if (notUsd(chart)) {
@@ -467,8 +491,10 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
     const avg = avgTradedValueWon(chart, fx);
     if (avg === null) {
       stats.quick.tooShort++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "short" });
     } else if (!passesLiquidity(avg)) {
       stats.quick.lowValue++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "low-trading" });
     } else {
       quickPassed.push({ symbol: r.symbol, name: r.name, avgValue: avg });
     }
@@ -502,12 +528,16 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
     const info = infoRun.results[i];
     if (!info) {
       stats.info.notFound++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "no-data" });
     } else if (info.longName !== null && isEtnName(info.longName)) {
       stats.info.etn++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "etn" });
     } else if (info.totalAssets === null) {
       stats.info.noAum++; // 신탁 등 순자산을 모르면 제외
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "no-aum" });
     } else if (!passesAum(aumEokFromUsd(info.totalAssets, fxNow.rate))) {
       stats.info.lowAum++;
+      notCollected.push({ symbol: r.symbol, name: r.name, reason: "small-aum" });
     } else {
       infoPassed.push({ symbol: r.symbol, name: r.name, info });
     }
@@ -551,5 +581,5 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   stats.final = etfs.length;
   const asOfUs = etfs.reduce((mx, e) => (e.m.asOf > mx ? e.m.asOf : mx), "");
   log(`미국 ETF ${etfs.length}개, 시세 기준일 ${asOfUs}${failed.length ? `, 실패 ${failed.length}건` : ""}`);
-  return { etfs, series, asOfUs, fx: fxNow, failed, stats };
+  return { etfs, series, asOfUs, fx: fxNow, failed, stats, notCollected };
 }

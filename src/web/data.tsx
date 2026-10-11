@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
 import { countByMarket, mergeSavedPrefs, type MarketCounts } from "../core/market-view";
 import type { HoldingsFile } from "../core/overlap";
-import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
+import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot, UsIndexFile } from "../core/types";
 import { tr } from "../core/i18n";
 import { useLang } from "./lang";
 import { readJson, writeJson } from "./storage";
@@ -152,10 +152,15 @@ export function useApp(): AppData {
 
 // ───────── 지연 로딩 데이터(차트 시계열, 백테스트 요약) ─────────
 
-function useLazy<T>(url: string): { data: T | null; error: boolean } {
-  const [state, setState] = useState<{ data: T | null; error: boolean }>(() => ({ data: cache.get(url) as T | null ?? null, error: false }));
+/** url 이 null 이면 아직 받지 않는다(필요해질 때 url 을 주면 그때 받는다). */
+function useLazy<T>(url: string | null): { data: T | null; error: boolean } {
+  const [state, setState] = useState<{ data: T | null; error: boolean }>(() => ({ data: (url ? (cache.get(url) as T | undefined) : undefined) ?? null, error: false }));
   useEffect(() => {
-    if (cache.has(url)) return;
+    if (!url) return;
+    if (cache.has(url)) {
+      setState({ data: cache.get(url) as T, error: false });
+      return;
+    }
     let alive = true;
     getJson<T>(url)
       .then((d) => {
@@ -175,3 +180,5 @@ export const useSeries = () => useLazy<SeriesFile>("./data/series.json");
 export const useBacktest = () => useLazy<BacktestSummary>("./data/backtest.json");
 /** 구성종목(겹침 분석). 약 1MB 라 겹침 화면에서만 지연 로딩한다. */
 export const useHoldings = () => useLazy<HoldingsFile>("./data/holdings.json");
+/** 수집 기준 밖의 미국 상장 ETF 이름 색인. 검색할 때(enabled)만 받는다. 파일이 없으면 error 만 true 이고 화면은 그대로 동작한다. */
+export const useUsIndex = (enabled: boolean) => useLazy<UsIndexFile>(enabled ? "./data/us-index.json" : null);

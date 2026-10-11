@@ -108,6 +108,14 @@ describe("checkEligibility", () => {
     expect(codeOf(smallUs, { ...p, market: "KR" })).toBe("market");
     expect(codeOf(smallUs, { ...p, market: "US" })).toBe("small-aum");
   });
+  it("막 상장해 지표가 전혀 없는 ETF는 오류 없이 후보에서 빠진다(목록·검색에는 남는다)", () => {
+    const fresh = makeEtf({ name: "KODEX 신규상장", m: { days: 1, years: 0.004, ret: { m1: null, m3: null, m6: null, y1: null, y3: null, y5: null }, vol1y: null, vol3y: null, mdd1y: null, mdd3y: null, avgValue20: null } });
+    expect(codeOf(fresh, p)).not.toBeNull();
+    expect(() => rankEtfs([fresh, makeEtf()], p)).not.toThrow();
+    const r = rankEtfs([fresh, makeEtf()], p);
+    expect(r.ranked.some((s) => s.etf.name === "KODEX 신규상장")).toBe(false);
+    expect(r.excluded.some((x) => x.etf.name === "KODEX 신규상장")).toBe(true);
+  });
   it("자산군 필터", () => {
     expect(why(makeEtf({ name: "KODEX 국고채10년" }), { ...p, assetClasses: ["kr-equity"] })).toMatch(/자산군/);
   });

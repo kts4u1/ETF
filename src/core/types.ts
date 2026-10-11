@@ -150,6 +150,27 @@ export interface Snapshot {
   etfs: EtfRecord[];
 }
 
+/** 해외(미국) 상장 ETF 중 수집 기준을 못 넘어 데이터에 들지 못한 이유 */
+export type UsSkipReason =
+  | "etn" // ETN(발행사 신용에 기대는 상환 증권, ETF 아님)
+  | "no-data" // 시세 제공처에 자료가 없음
+  | "short" // 거래일이 20일 미만(막 상장)
+  | "low-trading" // 일평균 거래대금 미달
+  | "no-aum" // 순자산을 알 수 없음
+  | "small-aum"; // 순자산 미달
+
+/**
+ * 수집하지 않은 해외(미국) 상장 ETF의 이름 색인. 점수·지표 없이 "검색은 되지만 데이터에는 없음"을 알리는 용도다.
+ * 새로 상장한 ETF는 대개 순자산·거래대금이 작아 여기에 먼저 나타난다.
+ */
+export interface UsIndexFile {
+  version: 1;
+  /** 목록을 받은 날짜 YYYYMMDD(해외 시세 기준일) */
+  asOf: string;
+  /** [티커, 영문 이름, 사유] — 티커 순 */
+  etfs: [string, string, UsSkipReason][];
+}
+
 /** 차트용 주간 종가. 모든 ETF가 공통 날짜 격자(grid)를 공유하고 상장 전 구간은 offset 으로 건너뛴다. */
 export interface SeriesFile {
   version: 1;

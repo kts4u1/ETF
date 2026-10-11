@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { HISTORY_LIMIT_DAYS } from "../core/format";
 import { marketOf } from "../core/market";
 import { classify } from "../core/taxonomy";
-import { cleanSeries, computeMetrics } from "../core/metrics";
+import { cleanSeries, computeMetrics, minimalMetrics } from "../core/metrics";
 import type { HoldingRow } from "../core/holdings";
 import type { EtfRecord, PriceSeries, SeriesFile, Snapshot } from "../core/types";
 import { cleanDescription, fetchDetail, fetchEtfList, fetchHoldings, fetchPrices, type Detail, type ListItem } from "./naver";
@@ -12,7 +12,7 @@ import { cachedJson, readCache, today } from "./cache";
 import { loadDelistedEntries, syncDelisted } from "./delisted";
 import { mapPool } from "./pool";
 import { round, roundMetrics } from "./rounding";
-import { syncUs, type UsDeps, type UsStats, type UsSyncResult } from "./us";
+import { buildUsIndex, syncUs, type UsDeps, type UsStats, type UsSyncResult } from "./us";
 
 // 다른 모듈이 예전처럼 build-snapshot 에서 가져다 쓸 수 있게 다시 내보낸다.
 export { cachedJson, roundMetrics };
@@ -129,6 +129,8 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   const etfs: EtfRecord[] = [];
   const cleaned = new Map<string, PriceSeries>();
 
+  // 시세가 2행 미만인 신규 상장 ETF의 기준일은 같은 수집에서 가장 늦은 시세일로 둔다
+  const latestDate = priceRun.results.reduce((mx, r) => (r && r.dates.length > 0 && (r.dates[r.dates.length - 1] as string) > mx ? (r.dates[r.dates.length - 1] as string) : mx), "");
   list.forEach((it, i) => {
     const raw = priceRun.results[i];
     if (!raw) {
@@ -136,11 +138,9 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
       return;
     }
     const series = cleanSeries(raw);
-    const m = computeMetrics(series);
-    if (!m) {
-      failed.push(`${it.code} ${it.name} (시세 부족)`);
-      return;
-    }
+    // 막 상장해 시세가 1행 이하여도 목록·검색에는 넣는다(지표는 null). 새 ETF가 검색에서 빠지지 않게 하기 위해서다.
+    const m = computeMetrics(series) ?? minimalMetrics(series, latestDate);
+    if (series.dates.length < 2) failed.push(`${it.code} ${it.name} (신규 상장 — 시세 ${series.dates.length}행, 지표 없이 포함)`);
     const d = detailRun.results[i];
     if (!d) failed.push(`${it.code} ${it.name} (상세 — 총보수 등 없이 포함)`);
     cleaned.set(it.code, series);
@@ -182,8 +182,13 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   if (us) for (const [code, s] of us.series) allSeries.set(code, s);
   const seriesFile = buildSeriesFile(snapshot.etfs, allSeries);
   const holdings = opts.skipHoldings ? null : await buildHoldingsData(snapshot, loadCachedHoldings);
+  const usIndex = us ? buildUsIndex(us.notCollected, us.asOfUs) : null;
   await writeFile(join(OUT_DIR, "snapshot.json"), JSON.stringify(snapshot));
   await writeFile(join(OUT_DIR, "series.json"), JSON.stringify(seriesFile));
+  if (usIndex) {
+    await writeFile(join(OUT_DIR, "us-index.json"), JSON.stringify(usIndex));
+    log(`해외 검색 색인 저장: 수집 기준 밖의 미국 상장 ETF ${usIndex.etfs.length}개(검색에서 "데이터에 없음"으로 안내)`);
+  }
   log(`스냅샷 저장: 국내 ${etfs.length}개${us ? ` + 해외(미국) ${us.etfs.length}개` : ""}, 국내 기준일 ${snapshot.asOf}${snapshot.asOfUs ? `, 해외 기준일 ${snapshot.asOfUs}` : ""}`);
   if (holdings) {
     await writeFile(join(OUT_DIR, "holdings.json"), JSON.stringify(holdings.file));

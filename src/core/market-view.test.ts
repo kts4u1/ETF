@@ -12,12 +12,14 @@ import {
   matchRank,
   matchesQuery,
   mergeSavedPrefs,
+  searchUsIndex,
   summarizeExclusions,
   usCollectionRule,
+  usSkipReasonText,
 } from "./market-view";
 import { DEFAULT_PREFS, checkEligibility, rankEtfs } from "./scoring";
-import { makeEtf } from "./test-utils";
-import type { EtfRecord, Taxonomy } from "./types";
+import { hangulIn, makeEtf, withLang } from "./test-utils";
+import type { EtfRecord, Taxonomy, UsIndexFile, UsSkipReason } from "./types";
 
 const usTax = (over: Partial<Taxonomy> = {}): Taxonomy => ({
   assetClass: "global-equity",
@@ -166,5 +168,40 @@ describe("순자산 표기(aumText)", () => {
   it("† 설명 문구가 있다", () => {
     expect(aumFundNote()).toContain("†");
     expect(aumFundNote()).toContain("펀드 전체");
+  });
+});
+
+describe("수집 기준 밖의 미국 상장 ETF 검색(색인)", () => {
+  const index: UsIndexFile = {
+    version: 1,
+    asOf: "20261009",
+    etfs: [
+      ["IVVB", "iShares Large Cap Deep Quarterly Laddered ETF", "small-aum"],
+      ["IVV", "iShares Core S&P 500 ETF", "small-aum"],
+      ["NEWQ", "Brand New Quantum ETF", "short"],
+      ["VXX", "iPath S&P 500 VIX Short-Term Futures ETN", "etn"],
+    ],
+  };
+  it("티커 일치 > 티커로 시작 > 이름에 포함 순서로 찾는다", () => {
+    expect(searchUsIndex(index, "ivv").map((r) => r[0])).toEqual(["IVV", "IVVB", ]); // 정확 일치 먼저, 시작 일치 다음
+    expect(searchUsIndex(index, "quantum").map((r) => r[0])).toEqual(["NEWQ"]); // 이름 검색
+    expect(searchUsIndex(index, "  VXX ").map((r) => r[0])).toEqual(["VXX"]); // 공백·대소문자 무시
+  });
+  it("한 글자·빈 검색어·색인이 없으면 비어 있다", () => {
+    expect(searchUsIndex(index, "i")).toEqual([]);
+    expect(searchUsIndex(index, "")).toEqual([]);
+    expect(searchUsIndex(null, "ivv")).toEqual([]);
+  });
+  it("limit 로 개수를 제한한다", () => {
+    expect(searchUsIndex(index, "ETF", 2)).toHaveLength(2);
+  });
+  it("모든 사유에 한국어·영어 문장이 있고 영어에는 한글이 없다", () => {
+    const reasons: UsSkipReason[] = ["etn", "no-data", "short", "low-trading", "no-aum", "small-aum"];
+    for (const r of reasons) {
+      expect(usSkipReasonText(r)).toMatch(/수집/);
+      expect(hangulIn(withLang("en", () => usSkipReasonText(r))), r).toEqual([]);
+    }
+    expect(usSkipReasonText("small-aum")).toContain("5,000억");
+    expect(withLang("en", () => usSkipReasonText("small-aum"))).toContain("₩500B");
   });
 });

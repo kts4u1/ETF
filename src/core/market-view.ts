@@ -2,7 +2,7 @@ import { fmtNum, langRecord, tr } from "./i18n";
 import { fmtEok, fmtWon } from "./format";
 import { MARKET_LABEL, US_MIN_AUM_EOK, US_MIN_AVG_VALUE_WON, marketOf } from "./market";
 import { DEFAULT_PREFS } from "./scoring";
-import type { EtfRecord, Exclusion, ExclusionCode, Market, MarketFilter, Preferences } from "./types";
+import type { EtfRecord, Exclusion, ExclusionCode, Market, MarketFilter, Preferences, UsIndexFile, UsSkipReason } from "./types";
 
 /**
  * 화면이 상장 시장(국내/해외)을 다루는 데 쓰는 순수 함수 모음.
@@ -129,3 +129,39 @@ export function matchRank(e: Pick<EtfRecord, "code" | "name" | "tax">, query: st
 }
 
 export const matchesQuery = (e: Pick<EtfRecord, "code" | "name" | "tax">, query: string): boolean => matchRank(e, query) > 0;
+
+// ───────── 수집 기준 밖의 미국 상장 ETF 검색(us-index.json) ─────────
+
+/** 수집하지 않은 사유를 한 문장 조각으로(문장 끝은 "…라 데이터에 없습니다" 앞에서 끊는다) */
+export function usSkipReasonText(reason: UsSkipReason): string {
+  switch (reason) {
+    case "etn":
+      return tr("ETN(발행사 신용에 기대는 상환 증권, ETF 아님)이라 수집하지 않았습니다", "An ETN (an unsecured debt note, not an ETF), so it is not collected");
+    case "no-data":
+      return tr("시세 제공처에 자료가 없어 수집하지 못했습니다", "No data from the price source, so it is not collected");
+    case "short":
+      return tr("거래일이 20일 미만(막 상장)이라 아직 수집하지 않았습니다", "Under 20 trading days of history (just listed), so it is not collected yet");
+    case "low-trading":
+      return tr(`일평균 거래대금이 ${fmtWon(US_MIN_AVG_VALUE_WON)}원 미만이라 수집하지 않았습니다`, `Average daily trading value is below ${fmtWon(US_MIN_AVG_VALUE_WON)}, so it is not collected`);
+    case "no-aum":
+      return tr("순자산을 알 수 없어 수집하지 않았습니다", "Net assets are unknown, so it is not collected");
+    case "small-aum":
+      return tr(`순자산이 ${fmtEok(US_MIN_AUM_EOK)}원 미만이라 수집하지 않았습니다`, `Net assets are below ${fmtEok(US_MIN_AUM_EOK)}, so it is not collected`);
+  }
+}
+
+/**
+ * 색인에서 검색어에 맞는 종목(티커가 같으면 가장 위, 티커가 검색어로 시작하면 그다음, 이름에 들어 있으면 그다음).
+ * 두 글자 미만이면 비어 있는 결과 — 한 글자는 거의 모든 종목에 맞아 의미가 없다.
+ */
+export function searchUsIndex(file: UsIndexFile | null, q: string, limit = 12): UsIndexFile["etfs"] {
+  const s = q.trim().toLowerCase();
+  if (!file || s.length < 2) return [];
+  const hits: { row: UsIndexFile["etfs"][number]; rank: number }[] = [];
+  for (const row of file.etfs) {
+    const ticker = row[0].toLowerCase();
+    const rank = ticker === s ? 3 : ticker.startsWith(s) ? 2 : row[1].toLowerCase().includes(s) ? 1 : 0;
+    if (rank > 0) hits.push({ row, rank });
+  }
+  return hits.sort((a, b) => b.rank - a.rank || (a.row[0] < b.row[0] ? -1 : 1)).slice(0, limit).map((h) => h.row);
+}

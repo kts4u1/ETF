@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { ASSET_CLASS_LABEL, REGION_LABEL, TAG_LABEL } from "../../core/explain";
 import { fmtNum, numLocale, tr } from "../../core/i18n";
 import { themeLabel } from "../../core/i18n-labels";
-import { fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
+import { fmtDate, fmtFee, fmtHistory, fmtRatio, fmtWon } from "../../core/format";
 import { isOverseas, marketOf } from "../../core/market";
-import { aumFundNote, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery } from "../../core/market-view";
+import { aumFundNote, MARKET_FILTERS, MARKET_FILTER_LABEL, aumText, describeCounts, listingLine, matchesQuery, searchUsIndex, usSkipReasonText } from "../../core/market-view";
 import { mddOf, volOf } from "../../core/scoring";
 import type { AssetClass, EtfRecord, MarketFilter, Region } from "../../core/types";
 import { Delta, Disclaimer, FxNote, MarketBadge } from "../components/bits";
-import { useApp } from "../data";
+import { useApp, useUsIndex } from "../data";
 import { compareHref, etfHref } from "../router";
 
 type SortKey = "score" | "name" | "y1" | "cagr3y" | "vol" | "mdd" | "fee" | "aum" | "value" | "years";
@@ -84,6 +84,9 @@ export function Explore() {
     });
   }, [snap, q, mkt, cls, region, tag, onlyCand, sort, scoreOf]);
   const hasOverseas = useMemo(() => rows.some(isOverseas), [rows]);
+  // 두 글자 이상 검색할 때만 색인(수집 기준 밖의 미국 상장 ETF)을 받는다. 국내 전용 선택이면 필요 없다.
+  const { data: usIndex } = useUsIndex(q.trim().length >= 2 && mkt !== "KR");
+  const notCollected = useMemo(() => searchUsIndex(usIndex, q), [usIndex, q]);
 
   const toggleSort = (key: SortKey, desc: boolean) => {
     setShown(PAGE);
@@ -176,7 +179,27 @@ export function Explore() {
         </table>
       </div>
       {rows.slice(0, shown).some((e) => e.aumScope === "fund") && <p className="hint">{aumFundNote()} {tr("순자산 정렬에서는 † 항목을 맨 뒤로 보냅니다.", "When sorting by net assets, † items go to the end.")}</p>}
-      {rows.length === 0 && <div className="card empty">{tr("조건에 맞는 ETF가 없습니다.", "No ETFs match.")}</div>}
+      {rows.length === 0 && (
+        <div className="card empty">
+          {q.trim()
+            ? tr(
+                `‘${q.trim()}’에 맞는 ETF가 데이터에 없습니다. 이 앱의 데이터는 국내 ${fmtDate(snap.asOf)}${snap.asOfUs ? `, 해외 ${fmtDate(snap.asOfUs)}` : ""} 기준이라 그 뒤에 상장한 ETF는 다음 데이터 갱신(npm run sync) 뒤에 나타납니다.`,
+                `No ETF matching “${q.trim()}” is in the data. The data is as of ${fmtDate(snap.asOf)} (Korea)${snap.asOfUs ? ` and ${fmtDate(snap.asOfUs)} (US)` : ""}; ETFs listed after that appear after the next data refresh (npm run sync).`,
+              )
+            : tr("조건에 맞는 ETF가 없습니다.", "No ETFs match.")}
+        </div>
+      )}
+      {notCollected.length > 0 && (
+        <section className="card" aria-labelledby="notcol-h">
+          <h2 id="notcol-h">{tr("데이터에 없는 미국 상장 ETF", "US-listed ETFs not in the data")}</h2>
+          <p className="muted">{tr("검색에는 나오지만 수집 기준(순자산·거래대금)에 못 미치거나 막 상장해서 점수·지표가 없습니다. 새로 상장한 ETF는 대개 여기에 먼저 나타납니다.", "These match your search but have no score or metrics: they are below the collection thresholds (net assets, trading value) or just listed. Newly listed ETFs usually show up here first.")}</p>
+          <ul className="plain">
+            {notCollected.map(([symbol, name, reason]) => (
+              <li key={symbol}><b>{symbol}</b> <span lang="en">{name}</span> <span className="muted">· {usSkipReasonText(reason)}</span></li>
+            ))}
+          </ul>
+        </section>
+      )}
       {shown < rows.length && (
         <p className="more"><button type="button" className="btn ghost" onClick={() => setShown((n) => n + PAGE)}>{tr(`더 보기 (${Math.min(PAGE, rows.length - shown)}개)`, `Show more (${Math.min(PAGE, rows.length - shown)})`)}</button></p>
       )}

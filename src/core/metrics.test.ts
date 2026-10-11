@@ -6,6 +6,7 @@ import {
   computeMetrics,
   forwardReturnMonths,
   indexOnOrBefore,
+  minimalMetrics,
   RISK_FREE,
   shiftMonths,
 } from "./metrics";
@@ -210,5 +211,25 @@ describe("endedEarly", () => {
   it("기준일 근처까지 이어지면 상장 중", () => {
     expect(endedEarly(s2, s2.dates[s2.dates.length - 1]!)).toBe(false);
     expect(endedEarly(s2, "20190520")).toBe(false);
+  });
+});
+
+describe("minimalMetrics: 막 상장해 시세가 2행 미만인 ETF", () => {
+  it("기간 지표는 모두 null, 기준일·거래일 수만 채운다", () => {
+    const one: PriceSeries = { dates: ["20261008"], close: [10000], volume: [500] };
+    expect(computeMetrics(one)).toBeNull(); // 2행 미만은 일반 계산 불가
+    const m = minimalMetrics(one, "20261008");
+    expect(m.asOf).toBe("20261008");
+    expect(m.days).toBe(1);
+    expect(m.firstDate).toBe("20261008");
+    expect(m.years).toBeCloseTo(1 / 252, 6);
+    expect(Object.values(m.ret).every((v) => v === null)).toBe(true);
+    expect([m.cagr1y, m.vol1y, m.mdd1y, m.mddAll, m.sharpe1y, m.mom12_1, m.trend200, m.avgValue20].every((v) => v === null)).toBe(true);
+  });
+  it("시세가 아예 없으면 같은 수집의 최신일을 기준일로 쓴다", () => {
+    const m = minimalMetrics({ dates: [], close: [], volume: [] }, "20261008");
+    expect(m.asOf).toBe("20261008");
+    expect(m.firstDate).toBe("20261008");
+    expect(m.days).toBe(0);
   });
 });
