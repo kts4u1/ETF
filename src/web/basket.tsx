@@ -63,11 +63,15 @@ export function BasketProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  const commit = useCallback((next: BasketItem[]) => {
+  /** 저장까지 성공했는지 돌려준다(알림에 "저장되지 않아요"를 덧붙이려고) */
+  const commit = useCallback((next: BasketItem[]): boolean => {
     ref.current = next;
     setItems(next);
-    setSaveFailed(!writeJson(BASKET_KEY, next));
+    const ok = writeJson(BASKET_KEY, next);
+    setSaveFailed(!ok);
+    return ok;
   }, []);
+  const unsaved = () => tr(" — 이 브라우저에서는 저장되지 않아요(새로고침하면 사라져요)", " — not saved in this browser (it disappears on refresh)");
 
   // 다른 탭에서 바뀌면 따라간다(저장소를 비우면 key 가 null)
   useEffect(() => {
@@ -91,8 +95,8 @@ export function BasketProvider({ children }: { children: ReactNode }) {
       add: (etfs) => {
         const r = addItems(ref.current, etfs, localToday());
         if (r.added > 0) {
-          commit(r.items);
-          say(tr(`${r.added}개를 장바구니에 담았어요(모두 ${fmtNum(r.items.length)}개)`, `Added ${r.added} to the basket (${fmtNum(r.items.length)} in total)`));
+          const ok = commit(r.items);
+          say(tr(`${r.added}개를 장바구니에 담았어요(모두 ${fmtNum(r.items.length)}개)`, `Added ${r.added} to the basket (${fmtNum(r.items.length)} in total)`) + (ok ? "" : unsaved()));
         } else if (r.full > 0) say(tr(`장바구니가 가득 찼어요(최대 ${BASKET_MAX}개)`, `The basket is full (max ${BASKET_MAX})`), false);
         else say(tr("이미 장바구니에 모두 담겨 있어요", "All of them are already in the basket"), false);
         return r;
@@ -100,14 +104,14 @@ export function BasketProvider({ children }: { children: ReactNode }) {
       remove: (code) => {
         const gone = ref.current.find((i) => i.code === code.trim().toUpperCase());
         const next = removeItem(ref.current, code);
-        commit(next);
-        if (gone) say(tr(`${gone.name}을(를) 장바구니에서 뺐어요(${next.length}개 남음)`, `Removed ${gone.name} from the basket (${next.length} left)`), false);
+        const ok = commit(next);
+        if (gone) say(tr(`${gone.name}을(를) 장바구니에서 뺐어요(${next.length}개 남음)`, `Removed ${gone.name} from the basket (${next.length} left)`) + (ok ? "" : unsaved()), false);
       },
       toggle: (etf) => {
         if (hasItem(ref.current, etf.code)) {
           const next = removeItem(ref.current, etf.code);
-          commit(next);
-          say(tr(`${etf.name}을(를) 장바구니에서 뺐어요(${next.length}개 남음)`, `Removed ${etf.name} from the basket (${next.length} left)`), false);
+          const ok = commit(next);
+          say(tr(`${etf.name}을(를) 장바구니에서 뺐어요(${next.length}개 남음)`, `Removed ${etf.name} from the basket (${next.length} left)`) + (ok ? "" : unsaved()), false);
           return true;
         }
         const r = addItems(ref.current, [etf], localToday());
@@ -115,8 +119,8 @@ export function BasketProvider({ children }: { children: ReactNode }) {
           say(tr(`장바구니가 가득 찼어요(최대 ${BASKET_MAX}개). 빼고 담아 주세요`, `The basket is full (max ${BASKET_MAX}). Remove one to add another`), true);
           return false;
         }
-        commit(r.items);
-        say(tr(`${etf.name}을(를) 장바구니에 담았어요(${r.items.length}개)`, `Added ${etf.name} to the basket (${r.items.length})`));
+        const ok = commit(r.items);
+        say(tr(`${etf.name}을(를) 장바구니에 담았어요(${r.items.length}개)`, `Added ${etf.name} to the basket (${r.items.length})`) + (ok ? "" : unsaved()));
         return true;
       },
       setNote: (code, note) => commit(setNote(ref.current, code, note)),
