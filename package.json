@@ -15,7 +15,9 @@
     "backtest": "tsx src/sync/cli.ts backtest",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "derive-delisted": "tsx src/sync/cli.ts derive-delisted"
+    "derive-delisted": "tsx src/sync/cli.ts derive-delisted",
+    "artifact": "npm run build && node scripts/make-artifact.mjs",
+    "refresh": "bash scripts/refresh-data.sh"
   },
   "dependencies": {
     "react": "18.3.1",

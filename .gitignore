@@ -6,3 +6,6 @@ dist/
 
 # data/delisted.csv · data/delisted.meta.json 은 커밋한다: 공개 사실(KRX 종목 목록 + 네이버 시세)에서
 # 만든 것이고, 커밋된 백테스트 결과가 이 파일에 의존한다. 만드는 방법은 data/README.md
+
+# 아티팩트 게시용 임시 산출물(npm run artifact)
+.artifact/
