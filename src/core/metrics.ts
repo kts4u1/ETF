@@ -129,6 +129,37 @@ function sharpe(cagr: number | null, vol: number | null): number | null {
  * @param asOfIndex 기준일 인덱스. 기본은 마지막 거래일. 백테스트에서 과거 시점 기준 지표를 만들 때 쓴다.
  *                  기준일 이후 데이터는 절대 참조하지 않는다(미래 정보 누출 방지).
  */
+/**
+ * 시세가 2행 미만인(오늘 막 상장한) ETF의 지표. 계산할 수 있는 지표가 없으므로 기간 수익률·변동성 등은 모두 null 이고,
+ * 그래서 추천 후보(상장 1년 이상, 거래대금)에서는 자연히 빠지지만 목록·검색에는 나타난다.
+ * asOf 는 시세가 있으면 마지막 거래일, 없으면 fallbackAsOf(같은 수집의 다른 ETF 최신일).
+ */
+export function minimalMetrics(series: PriceSeries, fallbackAsOf: string): Metrics {
+  const n = series.dates.length;
+  const last = n > 0 ? (series.dates[n - 1] as string) : fallbackAsOf;
+  return {
+    asOf: last,
+    days: n,
+    firstDate: n > 0 ? (series.dates[0] as string) : last,
+    years: n / 252,
+    ret: { m1: null, m3: null, m6: null, y1: null, y3: null, y5: null },
+    cagr1y: null,
+    cagr3y: null,
+    cagr5y: null,
+    vol1y: null,
+    vol3y: null,
+    mdd1y: null,
+    mdd3y: null,
+    mddAll: null,
+    drawdown: null,
+    sharpe1y: null,
+    sharpe3y: null,
+    mom12_1: null,
+    trend200: null,
+    avgValue20: null,
+  };
+}
+
 export function computeMetrics(series: PriceSeries, asOfIndex: number = series.close.length - 1): Metrics | null {
   const { close, volume, dates } = series;
   const end = asOfIndex;

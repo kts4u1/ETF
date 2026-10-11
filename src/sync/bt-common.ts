@@ -1,5 +1,6 @@
 /** 백테스트 공통 코드: 과거 시점의 유니버스 구성, 월말 생성, 통계 유틸. */
 import { readFile } from "node:fs/promises";
+import { marketOf } from "../core/market";
 import { cleanSeries, computeMetrics, endedEarly, indexOnOrBefore, shiftMonths } from "../core/metrics";
 import type { EtfRecord, PriceSeries, Snapshot } from "../core/types";
 import { loadCachedList, loadCachedPrices } from "./build-snapshot";
@@ -23,15 +24,19 @@ export interface AsOfEtf {
 
 export async function loadUniverse(): Promise<{ loaded: Loaded[]; asOf: string; delistedIncluded: number; delistedSkipped: DelistedSkip[] }> {
   const snap = JSON.parse(await readFile("public/data/snapshot.json", "utf8")) as Snapshot;
+  // 백테스트(워크포워드 검증)는 국내 상장 ETF 만 쓴다. 해외 상장 ETF 가 스냅샷에 섞여 있어도 유니버스가 달라지지 않는다.
+  // (해외는 시세 캐시가 .cache/yahoo 에 따로 있고, snap.asOf 도 국내 기준일이다.)
+  const domestic = snap.etfs.filter((e) => marketOf(e) === "KR");
   const loaded: Loaded[] = [];
-  for (const rec of snap.etfs) {
+  for (const rec of domestic) {
     const raw = await loadCachedPrices(rec.code);
     if (!raw) continue;
     const series = cleanSeries(raw);
     if (series.dates.length > 60) loaded.push({ rec, series, ended: endedEarly(series, snap.asOf) });
   }
-  // 기준은 스냅샷(sync --limit N 이 N개로 줄여 쓴다)과 캐시된 전체 목록 중 큰 쪽이다
-  const fullCount = Math.max(snap.etfs.length, (await loadCachedList())?.length ?? 0);
+  // 기준은 스냅샷(sync --limit N 이 N개로 줄여 쓴다)과 캐시된 전체 목록 중 큰 쪽이다. 해외 레코드는 세지 않는다
+  // (세면 국내 시세 캐시가 충분해도 "절반 미만"으로 잘못 중단된다).
+  const fullCount = Math.max(domestic.length, (await loadCachedList())?.length ?? 0);
   assertUniverseUsable(loaded.length, fullCount, process.env.BACKTEST_ALLOW_PARTIAL === "1");
   // 사용자가 data/delisted.csv 로 제공한 상장폐지 ETF(있을 때만). 생존편향을 줄이기 위한 것이다.
   let delistedIncluded = 0;

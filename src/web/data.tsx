@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { DEFAULT_PREFS, rankEtfs } from "../core/scoring";
+import { countByMarket, mergeSavedPrefs, type MarketCounts } from "../core/market-view";
 import type { HoldingsFile } from "../core/overlap";
-import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot } from "../core/types";
+import type { EtfRecord, Preferences, Recommendation, Scored, SeriesFile, Snapshot, UsIndexFile } from "../core/types";
+import { tr } from "../core/i18n";
+import { useLang } from "./lang";
 import { readJson, writeJson } from "./storage";
 
 export interface ComboCell {
@@ -48,6 +51,8 @@ export interface BacktestCell {
 
 interface AppData {
   snap: Snapshot;
+  /** 스냅샷의 시장별 ETF 수(화면 문구에 개수를 박아 두지 않기 위해 여기서 센다) */
+  counts: MarketCounts;
   byCode: Map<string, EtfRecord>;
   prefs: Preferences;
   setPrefs: (patch: Partial<Preferences>) => void;
@@ -64,9 +69,9 @@ const Ctx = createContext<AppData | null>(null);
 // 앱 이름이 바뀌어도 저장된 설정(및 App.tsx 의 테마 키)이 사라지지 않도록 예전 접두사를 유지한다.
 const PREFS_KEY = "etf-picker:prefs:v1";
 
+/** 저장된 설정 복원. 시장 필터가 생기기 전에 저장된 설정에는 market 이 없으므로 기본값(전체)으로 채운다. */
 function loadPrefs(): Preferences {
-  const saved = readJson<Partial<Preferences>>(PREFS_KEY);
-  return { ...DEFAULT_PREFS, ...(saved ?? {}) };
+  return mergeSavedPrefs(readJson<unknown>(PREFS_KEY));
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -79,6 +84,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [prefs, setPrefsState] = useState<Preferences>(loadPrefs);
+  const { lang } = useLang();
 
   useEffect(() => {
     getJson<Snapshot>("./data/snapshot.json")
@@ -101,28 +107,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const derived = useMemo(() => {
     if (!snap) return null;
     const byCode = new Map(snap.etfs.map((e) => [e.code, e]));
+    const counts = countByMarket(snap.etfs);
     const rec = rankEtfs(snap.etfs, prefs);
     const all = prefs.dedupe ? rankEtfs(snap.etfs, { ...prefs, dedupe: false }) : rec;
     const scoreMap = new Map(all.ranked.map((s) => [s.etf.code, s]));
     const excludedBy = new Map(all.excluded.map((x) => [x.etf.code, x.reason]));
-    return { byCode, rec, all, scoreMap, excludedBy };
-  }, [snap, prefs]);
+    return { byCode, counts, rec, all, scoreMap, excludedBy };
+    // lang: 제외 사유 같은 문장이 결과 안에 들어 있어 언어가 바뀌면 다시 계산한다
+  }, [snap, prefs, lang]);
 
   if (error) {
     return (
       <div className="state-box" role="alert">
-        <h2>데이터를 불러오지 못했습니다</h2>
+        <h2>{tr("데이터를 불러오지 못했습니다", "Could not load the data")}</h2>
         <p>{error}</p>
         <p>
-          처음 실행이라면 터미널에서 <code>npm run sync</code> 로 ETF 데이터를 먼저 수집해 주세요.
+          {tr("처음 실행이라면 터미널에서 ", "If this is your first run, collect the ETF data first with ")}<code>npm run sync</code>{tr(" 로 ETF 데이터를 먼저 수집해 주세요.", " in a terminal.")}
         </p>
       </div>
     );
   }
-  if (!snap || !derived) return <div className="state-box">ETF 데이터를 불러오는 중…</div>;
+  if (!snap || !derived) return <div className="state-box">{tr("ETF 데이터를 불러오는 중…", "Loading ETF data…")}</div>;
 
   const value: AppData = {
     snap,
+    counts: derived.counts,
     byCode: derived.byCode,
     prefs,
     setPrefs,
@@ -143,10 +152,15 @@ export function useApp(): AppData {
 
 // ───────── 지연 로딩 데이터(차트 시계열, 백테스트 요약) ─────────
 
-function useLazy<T>(url: string): { data: T | null; error: boolean } {
-  const [state, setState] = useState<{ data: T | null; error: boolean }>(() => ({ data: cache.get(url) as T | null ?? null, error: false }));
+/** url 이 null 이면 아직 받지 않는다(필요해질 때 url 을 주면 그때 받는다). */
+function useLazy<T>(url: string | null): { data: T | null; error: boolean } {
+  const [state, setState] = useState<{ data: T | null; error: boolean }>(() => ({ data: (url ? (cache.get(url) as T | undefined) : undefined) ?? null, error: false }));
   useEffect(() => {
-    if (cache.has(url)) return;
+    if (!url) return;
+    if (cache.has(url)) {
+      setState({ data: cache.get(url) as T, error: false });
+      return;
+    }
     let alive = true;
     getJson<T>(url)
       .then((d) => {
@@ -166,3 +180,5 @@ export const useSeries = () => useLazy<SeriesFile>("./data/series.json");
 export const useBacktest = () => useLazy<BacktestSummary>("./data/backtest.json");
 /** 구성종목(겹침 분석). 약 1MB 라 겹침 화면에서만 지연 로딩한다. */
 export const useHoldings = () => useLazy<HoldingsFile>("./data/holdings.json");
+/** 수집 기준 밖의 미국 상장 ETF 이름 색인. 검색할 때(enabled)만 받는다. 파일이 없으면 error 만 true 이고 화면은 그대로 동작한다. */
+export const useUsIndex = (enabled: boolean) => useLazy<UsIndexFile>(enabled ? "./data/us-index.json" : null);

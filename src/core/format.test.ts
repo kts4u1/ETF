@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { feeWonPer10M, fmtEok, fmtFee, fmtHistory, fmtRatio, fmtSnapshotList, fmtSurvivorshipGap, fmtWon } from "./format";
+import {
+  feeWonPer10M,
+  fmtAsOf,
+  fmtEok,
+  fmtFee,
+  fmtFxRate,
+  fmtHistory,
+  fmtPriceLine,
+  fmtRatio,
+  fmtSnapshotList,
+  fmtSurvivorshipGap,
+  fmtUsd,
+  fmtWon,
+  fmtWonShort,
+  priceParts,
+} from "./format";
 
 describe("fmtFee", () => {
   it("초저보수는 자릿수를 늘려 구분 가능하게", () => {
@@ -77,5 +92,58 @@ describe("fmtSnapshotList", () => {
   });
   it("빈 목록은 빈 문자열", () => {
     expect(fmtSnapshotList([])).toBe("");
+  });
+});
+
+describe("fmtUsd / fmtWonShort", () => {
+  it("달러는 소수 둘째 자리와 천 단위 구분", () => {
+    expect(fmtUsd(543.2)).toBe("$543.20");
+    expect(fmtUsd(1234.5)).toBe("$1,234.50");
+    expect(fmtUsd(null)).toBe("-");
+    expect(fmtUsd(Number.NaN)).toBe("-");
+  });
+  it("원화 보조 표기는 만원 단위로 줄이고 경계에서 단위를 바꾼다", () => {
+    expect(fmtWonShort(7_600)).toBe("7,600원");
+    expect(fmtWonShort(9_999.4)).toBe("9,999원");
+    expect(fmtWonShort(76_000)).toBe("7.6만원");
+    expect(fmtWonShort(760_480)).toBe("76만원");
+    expect(fmtWonShort(1_503_000)).toBe("150만원");
+    expect(fmtWonShort(12_345_678)).toBe("1,235만원");
+    expect(fmtWonShort(150_000_000)).toBe("1.5억원");
+    expect(fmtWonShort(null)).toBe("-");
+  });
+});
+
+describe("priceParts / fmtPriceLine", () => {
+  it("국내 상장은 원화 가격만", () => {
+    expect(priceParts({ price: 9_800 })).toEqual({ main: "9,800원", sub: null });
+    expect(fmtPriceLine({ price: 35_550 })).toBe("35,550원");
+  });
+  it("해외 상장은 달러 가격 + 원화 환산값", () => {
+    const e = { market: "US" as const, price: 760_480, priceNative: 543.2 };
+    expect(priceParts(e)).toEqual({ main: "$543.20", sub: "≈ 76만원" });
+    expect(fmtPriceLine(e)).toBe("$543.20 (≈ 76만원)");
+  });
+  it("현지 가격이 없는 해외 레코드는 원화 가격으로 되돌아간다", () => {
+    expect(fmtPriceLine({ market: "US", price: 76_000, priceNative: null })).toBe("76,000원");
+    expect(fmtPriceLine({ market: "US", price: 76_000 })).toBe("76,000원");
+  });
+  it("국내 레코드에 priceNative 가 있어도 달러로 표기하지 않는다", () => {
+    expect(fmtPriceLine({ market: "KR", price: 76_000, priceNative: 55 })).toBe("76,000원");
+  });
+});
+
+describe("fmtAsOf", () => {
+  it("해외 데이터가 없으면 예전 문구 그대로", () => {
+    expect(fmtAsOf({ asOf: "20261008" })).toBe("시세 기준일 2026-10-08");
+  });
+  it("국내·해외 기준일과 환율을 따로 적고, 다르면 다르다고 밝힌다", () => {
+    const t = fmtAsOf({ asOf: "20261008", asOfUs: "20261007", fxUsdKrw: { rate: 1380.5, date: "20261007" } });
+    expect(t).toBe("국내 시세 기준일 2026-10-08 · 해외(미국) 시세 기준일 2026-10-07(국내와 다름) · 원/달러 환율 1,380.50원(2026-10-07)");
+  });
+  it("기준일이 같으면 '다름' 표시를 하지 않고, 환율이 없으면 생략한다", () => {
+    const t = fmtAsOf({ asOf: "20261008", asOfUs: "20261008" });
+    expect(t).toBe("국내 시세 기준일 2026-10-08 · 해외(미국) 시세 기준일 2026-10-08");
+    expect(fmtFxRate(1400)).toBe("1,400.00원");
   });
 });

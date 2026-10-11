@@ -12,7 +12,13 @@ export type AssetClass =
   | "commodity" // 원자재(금·은·원유 등)
   | "multi" // 혼합자산(주식+채권, TDF, 자산배분)
   | "real-asset" // 리츠·인프라
-  | "fx"; // 통화
+  | "fx" // 통화
+  | "crypto"; // 가상자산(비트코인·이더리움 현물 ETF 등). 국내 상장 ETF에는 없고 해외 상장에만 있다
+
+/** 상장 시장. 국내(KRX)와 미국(NYSE Arca·Nasdaq·Cboe 등). 이전 스냅샷에는 필드가 없고, 없으면 국내로 본다. */
+export type Market = "KR" | "US";
+/** 화면·추천 설정의 시장 선택. all 은 국내와 해외를 한 목록에서 함께 본다. */
+export type MarketFilter = "all" | Market;
 
 export type Region = "KR" | "US" | "CN" | "JP" | "IN" | "VN" | "EU" | "GLOBAL" | "NA";
 
@@ -27,7 +33,9 @@ export type StructureTag =
   | "total-return" // TR (분배금 재투자)
   | "dividend" // 배당 지향
   | "concentrated" // 단일종목 또는 소수(TOP1~5) 종목 집중
-  | "futures"; // 선물 기반(만기 교체 비용 발생)
+  | "futures" // 선물 기반(만기 교체 비용 발생)
+  | "defined-outcome" // 버퍼·목표수익 구조(옵션으로 손실 일부를 막는 대신 상승이 제한됨, 기간 중간에 사면 조건이 달라짐)
+  | "volatility"; // 변동성(VIX) 선물 상품 — 구조상 장기 보유할수록 가치가 줄어드는 경향
 
 export interface Taxonomy {
   assetClass: AssetClass;
@@ -88,19 +96,34 @@ export interface Metrics {
   mom12_1: number | null;
   /** 종가 / 200일 이동평균 - 1 */
   trend200: number | null;
-  /** 최근 20거래일 평균 거래대금(원) */
+  /** 최근 20거래일 평균 거래대금(원). 해외 상장은 거래일 환율로 환산한 값 */
   avgValue20: number | null;
 }
 
 export interface EtfRecord {
+  /** 국내는 6자리 종목코드, 해외(미국)는 티커(1~5자 영문 대문자) */
   code: string;
   name: string;
+  /** 상장 시장. 없으면 국내(KR)로 본다 — 이전 스냅샷과 호환. 읽을 때는 core/market.ts 의 marketOf 를 쓴다. */
+  market?: Market;
+  /** 해외 상장: 거래소 이름(예: "NYSE Arca"). 국내는 없음 */
+  exchange?: string | null;
+  /** 해외 상장: 현지 통화 가격(USD). 없으면 price 가 곧 원화 가격이다 */
+  priceNative?: number | null;
+  /** 해외 상장: 원천(모닝스타)이 붙인 영문 분류(예: "Large Blend"). 분류 규칙의 근거로 쓰고 화면에는 참고로만 보여준다 */
+  category?: string | null;
   issuer: string | null;
+  /** 원화 가격. 해외 상장은 현지 통화 가격에 기준일 환율을 곱한 값(USD/KRW) */
   price: number;
   /** 당일 등락률 % */
   changeRate: number | null;
-  /** 순자산총액(억원) */
+  /** 순자산총액(억원). 해외 상장은 달러 순자산에 기준일 환율을 곱해 환산한 값 */
   aumEok: number;
+  /**
+   * "fund" 이면 aumEok 가 이 ETF 클래스만이 아니라 같은 펀드의 다른 클래스(뮤추얼펀드 등)까지 합친 값이다.
+   * 야후가 펀드 단위 순자산만 주기 때문에 뱅가드 ETF 에서 생긴다(예: VTI 는 실제 ETF 클래스의 몇 배로 나옴). 없으면 ETF 단독 값.
+   */
+  aumScope?: "fund";
   /** 총보수 % (연) */
   fee: number | null;
   /** 최근 12개월 분배율 % */
@@ -117,10 +140,35 @@ export interface Snapshot {
   version: 1;
   /** 스냅샷 생성 시각(ISO) */
   generatedAt: string;
-  /** 시세 기준일 YYYYMMDD */
+  /** 시세 기준일 YYYYMMDD — 국내 상장 ETF 시세의 최신일(백테스트의 상장폐지 판정 기준이므로 해외 시세로 바꾸지 않는다) */
   asOf: string;
+  /** 해외 상장 ETF 시세의 최신일. 해외 ETF가 없으면 없음 */
+  asOfUs?: string;
+  /** 해외 ETF 원화 환산에 쓴 최신 환율(원/달러)과 그 날짜 */
+  fxUsdKrw?: { rate: number; date: string };
   source: string;
   etfs: EtfRecord[];
+}
+
+/** 해외(미국) 상장 ETF 중 수집 기준을 못 넘어 데이터에 들지 못한 이유 */
+export type UsSkipReason =
+  | "etn" // ETN(발행사 신용에 기대는 상환 증권, ETF 아님)
+  | "no-data" // 시세 제공처에 자료가 없음
+  | "short" // 거래일이 20일 미만(막 상장)
+  | "low-trading" // 일평균 거래대금 미달
+  | "no-aum" // 순자산을 알 수 없음
+  | "small-aum"; // 순자산 미달
+
+/**
+ * 수집하지 않은 해외(미국) 상장 ETF의 이름 색인. 점수·지표 없이 "검색은 되지만 데이터에는 없음"을 알리는 용도다.
+ * 새로 상장한 ETF는 대개 순자산·거래대금이 작아 여기에 먼저 나타난다.
+ */
+export interface UsIndexFile {
+  version: 1;
+  /** 목록을 받은 날짜 YYYYMMDD(해외 시세 기준일) */
+  asOf: string;
+  /** [티커, 영문 이름, 사유] — 티커 순 */
+  etfs: [string, string, UsSkipReason][];
 }
 
 /** 차트용 주간 종가. 모든 ETF가 공통 날짜 격자(grid)를 공유하고 상장 전 구간은 offset 으로 건너뛴다. */
@@ -145,6 +193,8 @@ export interface Preferences {
   includeCoveredCall: boolean;
   /** 상장 1년 미만 포함 (기본 제외) */
   includeYoung: boolean;
+  /** 상장 시장: 전체(국내+해외) / 국내 상장만 / 해외 상장만 */
+  market: MarketFilter;
   /** 순자산 하한(억원) */
   minAumEok: number;
   /** 총보수 상한 % (null=제한 없음) */
@@ -173,6 +223,7 @@ export interface Scored {
 
 /** 후보에서 제외된 이유의 종류. UI 에서 사유별로 묶어 보여줄 때 쓴다. */
 export type ExclusionCode =
+  | "market"
   | "asset-class"
   | "leveraged"
   | "covered-call"

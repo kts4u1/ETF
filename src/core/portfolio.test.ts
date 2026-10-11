@@ -207,6 +207,7 @@ describe("roleOf", () => {
     expect(roleOf(makeEtf({ name: "KODEX 200" }))).toBe("성장(주식)");
     expect(roleOf(makeEtf({ name: "KODEX 국고채10년" }))).toBe("안정(채권)");
     expect(roleOf(makeEtf({ name: "KODEX 머니마켓액티브" }))).toBe("현금성(파킹)");
+    expect(roleOf(makeEtf({ name: "iShares Bitcoin Trust ETF", market: "US", tax: { ...makeEtf().tax, assetClass: "crypto", region: "NA" } }))).toBe("대체(가상자산)");
     expect(roleOf(makeEtf({ name: "ACE KRX금현물" }))).toBe("대체(원자재·통화)");
   });
 });

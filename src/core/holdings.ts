@@ -39,7 +39,7 @@ export interface EtfInput {
   derivativeStructure: boolean;
 }
 
-export type Unavailable = "derivative-structure" | "low-coverage" | "no-data";
+export type Unavailable = "derivative-structure" | "low-coverage" | "no-data" | "overseas-listed";
 
 export interface ExposureResult {
   code: string;

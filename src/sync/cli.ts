@@ -15,11 +15,20 @@ async function main() {
   switch (cmd) {
     case "sync": {
       const limit = value("limit");
+      const usLimit = value("us-limit");
+      // 값 없이 `--us-limit` 만 쓴 경우도 조용히 무시하지 않고 막는다
+      if ((usLimit !== undefined || flag("us-limit")) && !(Number.isInteger(Number(usLimit)) && Number(usLimit) > 0)) {
+        console.log(`--us-limit 는 1 이상의 정수여야 합니다(입력: ${usLimit ?? "값 없음"}).`);
+        process.exitCode = 1;
+        break;
+      }
       const { failed } = await syncAll({
         force: flag("force"),
         limit: limit ? Number(limit) : undefined,
         concurrency: value("concurrency") ? Number(value("concurrency")) : undefined,
         skipHoldings: flag("skip-holdings"),
+        skipUs: flag("skip-us"),
+        usLimit: usLimit ? Number(usLimit) : undefined,
         log: (m) => console.log(m),
       });
       if (failed.length) {
@@ -57,7 +66,13 @@ async function main() {
       break;
     }
     default:
-      console.log("사용법:\n  npm run sync [-- --force] [-- --limit N] [-- --concurrency N] [-- --skip-holdings]\n  npm run backtest   (sync 후 .cache 의 시세로 오프라인 실행)\n  npm run derive-delisted -- <KRX 전종목 시세 CSV…>   (상장폐지 ETF 목록 생성)");
+      console.log(
+        "사용법:\n  npm run sync [-- --force] [-- --limit N] [-- --concurrency N] [-- --skip-holdings] [-- --skip-us] [-- --us-limit N]\n"
+          + "    --limit N      개발용: 국내 ETF 는 상위 N개만(미국은 이 옵션의 영향을 받지 않으니 --us-limit 이나 --skip-us 로 따로 줄이세요)\n"
+          + "    --skip-us      미국 상장 ETF 수집을 건너뛰고 국내만 저장(기존 snapshot.json 의 해외 ETF 는 지워집니다)\n"
+          + "    --us-limit N   개발용: 미국 ETF 는 거래대금 상위 N개만 다음 단계로(목록 전체의 1개월 시세는 받습니다)\n"
+          + "    미국 수집이 실패하면 snapshot.json·series.json·holdings.json 을 하나도 쓰지 않고 오류로 끝납니다.\n"
+          + "  npm run backtest   (sync 후 .cache 의 시세로 오프라인 실행)\n  npm run derive-delisted -- <KRX 전종목 시세 CSV…>   (상장폐지 ETF 목록 생성)");
       process.exitCode = 1;
   }
 }

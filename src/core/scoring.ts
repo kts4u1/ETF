@@ -1,3 +1,6 @@
+import { fmtEok, fmtWon } from "./format";
+import { langRecord, tr } from "./i18n";
+import { MARKET_LABEL, marketOf } from "./market";
 import type {
   EtfRecord,
   Exclusion,
@@ -22,13 +25,23 @@ import type {
 
 export const FACTOR_KEYS: FactorKey[] = ["ret", "eff", "safety", "trend", "cost", "trust"];
 
+/** 문장 속성(name·hint)만 읽을 때마다 현재 언어로 만드는 라벨 */
+const factorLabel = (ko: [string, string], en: [string, string]): { name: string; hint: string } => ({
+  get name() {
+    return tr(ko[0], en[0]);
+  },
+  get hint() {
+    return tr(ko[1], en[1]);
+  },
+});
+
 export const FACTOR_LABELS: Record<FactorKey, { name: string; hint: string }> = {
-  ret: { name: "수익성", hint: "최근 1·3·5년 연환산 수익률" },
-  eff: { name: "효율", hint: "위험 대비 수익(샤프지수)" },
-  safety: { name: "안정성", hint: "최대낙폭·변동성·고점 대비 위치" },
-  trend: { name: "추세", hint: "12개월 모멘텀·200일선 위 여부" },
-  cost: { name: "비용", hint: "연 총보수가 낮을수록 높음" },
-  trust: { name: "신뢰", hint: "순자산 규모와 거래대금" },
+  ret: factorLabel(["수익성", "최근 1·3·5년 연환산 수익률"], ["Return", "Annualized return over the last 1, 3 and 5 years"]),
+  eff: factorLabel(["효율", "위험 대비 수익(샤프지수)"], ["Efficiency", "Risk-adjusted return (Sharpe ratio)"]),
+  safety: factorLabel(["안정성", "최대낙폭·변동성·고점 대비 위치"], ["Stability", "Max drawdown, volatility and distance from the peak"]),
+  trend: factorLabel(["추세", "12개월 모멘텀·200일선 위 여부"], ["Trend", "12-month momentum and whether price is above the 200-day average"]),
+  cost: factorLabel(["비용", "연 총보수가 낮을수록 높음"], ["Cost", "Higher when the annual expense ratio is lower"]),
+  trust: factorLabel(["신뢰", "순자산 규모와 거래대금"], ["Reliability", "Net assets and trading value"]),
 };
 
 export interface ProfileConfig {
@@ -43,24 +56,36 @@ export interface ProfileConfig {
 
 export const PROFILES: Record<Profile, ProfileConfig> = {
   stable: {
-    label: "안정형",
-    description: "원금 손실을 최소화하고 싶어요. 낙폭이 작고 꾸준한 ETF를 우선합니다.",
+    get label() {
+      return tr("안정형", "Conservative");
+    },
+    get description() {
+      return tr("원금 손실을 최소화하고 싶어요. 낙폭이 작고 꾸준한 ETF를 우선합니다.", "I want to minimize losses. Favors steady ETFs with small drawdowns.");
+    },
     weights: { ret: 0.1, eff: 0.25, safety: 0.35, trend: 0.05, cost: 0.12, trust: 0.13 },
     // 위험 등급(explain.riskGrade)의 3등급 상한(변동성 15%)과 일치
     maxVol: 0.15,
     maxMdd: 0.25,
   },
   balanced: {
-    label: "중립형",
-    description: "어느 정도 변동은 감수하고 수익과 안정의 균형을 원해요.",
+    get label() {
+      return tr("중립형", "Balanced");
+    },
+    get description() {
+      return tr("어느 정도 변동은 감수하고 수익과 안정의 균형을 원해요.", "I can accept some swings and want a balance of return and stability.");
+    },
     weights: { ret: 0.25, eff: 0.25, safety: 0.2, trend: 0.1, cost: 0.1, trust: 0.1 },
     // 4등급 상한(변동성 30%)과 일치 — "위험 매우 높음(5등급)" 상품은 중립형에 추천하지 않는다
     maxVol: 0.3,
     maxMdd: 0.45,
   },
   aggressive: {
-    label: "공격형",
-    description: "큰 등락을 감수하더라도 높은 수익을 노려요.",
+    get label() {
+      return tr("공격형", "Aggressive");
+    },
+    get description() {
+      return tr("큰 등락을 감수하더라도 높은 수익을 노려요.", "I'll accept large swings in pursuit of higher returns.");
+    },
     weights: { ret: 0.4, eff: 0.15, safety: 0.05, trend: 0.22, cost: 0.08, trust: 0.1 },
     maxVol: null,
     maxMdd: null,
@@ -69,18 +94,33 @@ export const PROFILES: Record<Profile, ProfileConfig> = {
 
 export const HORIZONS: Record<Horizon, { label: string; description: string; mult: FactorScores }> = {
   short: {
-    label: "1년 미만",
-    description: "단기: 최근 추세와 모멘텀 비중을 높입니다.",
+    get label() {
+      return tr("1년 미만", "Under 1 year");
+    },
+    get description() {
+      return tr("단기: 최근 추세와 모멘텀 비중을 높입니다.", "Short term: puts more weight on recent trend and momentum.");
+    },
     mult: { ret: 1, eff: 1, safety: 1, trend: 1.5, cost: 0.6, trust: 1 },
   },
   mid: {
-    label: "1~3년",
-    description: "중기: 기본 가중치를 사용합니다.",
+    get label() {
+      return tr("1~3년", "1–3 years");
+    },
+    get description() {
+      return tr("중기: 기본 가중치를 사용합니다.", "Medium term: uses the base weights.");
+    },
     mult: { ret: 1, eff: 1, safety: 1, trend: 1, cost: 1, trust: 1 },
   },
   long: {
-    label: "3년 이상",
-    description: "장기: 비용(복리로 누적)과 위험 대비 효율 비중을 높이고 단기 추세 비중을 낮춥니다.",
+    get label() {
+      return tr("3년 이상", "3+ years");
+    },
+    get description() {
+      return tr(
+        "장기: 비용(복리로 누적)과 위험 대비 효율 비중을 높이고 단기 추세 비중을 낮춥니다.",
+        "Long term: weights cost (it compounds) and risk-adjusted efficiency more, and short-term trend less.",
+      );
+    },
     mult: { ret: 1, eff: 1.2, safety: 1, trend: 0.5, cost: 1.5, trust: 1 },
   },
 };
@@ -106,6 +146,7 @@ export const DEFAULT_PREFS: Preferences = {
   profile: "balanced",
   horizon: "mid",
   assetClasses: null,
+  market: "all",
   includeLeveraged: false,
   includeCoveredCall: true,
   includeYoung: false,
@@ -133,17 +174,32 @@ export function isLeveraged(e: EtfRecord): boolean {
 export const volOf = (e: EtfRecord) => e.m.vol3y ?? e.m.vol1y;
 export const mddOf = (e: EtfRecord) => e.m.mdd3y ?? e.m.mdd1y ?? e.m.mddAll;
 
-export const EXCLUSION_LABEL: Record<ExclusionCode, string> = {
-  "asset-class": "선택하지 않은 자산군",
-  leveraged: "레버리지·인버스",
-  "covered-call": "커버드콜",
-  "small-aum": "순자산이 작음",
-  "low-liquidity": "거래대금이 적음",
-  "too-young": "상장 3개월 미만",
-  "no-track-record": "상장 1년 미만",
-  "high-fee": "총보수 상한 초과",
-  "risk-limit": "투자 성향 위험 한도 초과",
-};
+export const EXCLUSION_LABEL: Record<ExclusionCode, string> = langRecord<ExclusionCode>(
+  {
+    market: "선택하지 않은 상장 시장",
+    "asset-class": "선택하지 않은 자산군",
+    leveraged: "레버리지·인버스",
+    "covered-call": "커버드콜",
+    "small-aum": "순자산이 작음",
+    "low-liquidity": "거래대금이 적음",
+    "too-young": "상장 3개월 미만",
+    "no-track-record": "상장 1년 미만",
+    "high-fee": "총보수 상한 초과",
+    "risk-limit": "투자 성향 위험 한도 초과",
+  },
+  {
+    market: "Market not selected",
+    "asset-class": "Asset class not selected",
+    leveraged: "Leveraged / inverse",
+    "covered-call": "Covered call",
+    "small-aum": "Small net assets",
+    "low-liquidity": "Low trading value",
+    "too-young": "Listed under 3 months",
+    "no-track-record": "Listed under 1 year",
+    "high-fee": "Expense ratio above cap",
+    "risk-limit": "Exceeds risk limit for profile",
+  },
+);
 
 export interface Ineligible {
   code: ExclusionCode;
@@ -153,25 +209,44 @@ export interface Ineligible {
 /** 후보에서 제외해야 하면 사유(코드 + 사람이 읽는 문장)를, 통과하면 null 을 돌려준다 */
 export function checkEligibility(e: EtfRecord, p: Preferences): Ineligible | null {
   const no = (code: ExclusionCode, reason: string): Ineligible => ({ code, reason });
-  if (p.assetClasses && !p.assetClasses.includes(e.tax.assetClass)) return no("asset-class", "선택하지 않은 자산군");
-  if (isLeveraged(e) && !p.includeLeveraged) return no("leveraged", "레버리지·인버스 상품 (설정에서 포함 가능)");
-  if (e.tax.tags.includes("covered-call") && !p.includeCoveredCall) return no("covered-call", "커버드콜 상품 (설정에서 포함 가능)");
+  if (p.market !== "all" && marketOf(e) !== p.market) return no("market", tr(`${MARKET_LABEL[marketOf(e)]} ETF — 선택한 시장(${MARKET_LABEL[p.market]})이 아님`, `${MARKET_LABEL[marketOf(e)]} ETF — not in the selected market (${MARKET_LABEL[p.market]})`));
+  if (p.assetClasses && !p.assetClasses.includes(e.tax.assetClass)) return no("asset-class", tr("선택하지 않은 자산군", "Asset class not selected"));
+  if (isLeveraged(e) && !p.includeLeveraged) return no("leveraged", tr("레버리지·인버스 상품 (설정에서 포함 가능)", "Leveraged / inverse product (can be included in settings)"));
+  if (e.tax.tags.includes("covered-call") && !p.includeCoveredCall) return no("covered-call", tr("커버드콜 상품 (설정에서 포함 가능)", "Covered-call product (can be included in settings)"));
   if (e.aumEok < p.minAumEok) {
-    return no("small-aum", `순자산 ${Math.round(e.aumEok).toLocaleString("ko-KR")}억원 — 최소 ${p.minAumEok.toLocaleString("ko-KR")}억원 미만`);
+    return no(
+      "small-aum",
+      tr(
+        `순자산 ${Math.round(e.aumEok).toLocaleString("ko-KR")}억원 — 최소 ${p.minAumEok.toLocaleString("ko-KR")}억원 미만`,
+        `Net assets ${fmtEok(e.aumEok)} — below the ${fmtEok(p.minAumEok)} minimum`,
+      ),
+    );
   }
-  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return no("low-liquidity", "일평균 거래대금이 3억원 미만이라 사고팔기 어려움");
-  if (!p.includeYoung && e.m.ret.y1 === null) return no("no-track-record", "상장 1년 미만이라 성과 검증 부족 (설정에서 포함 가능)");
-  if (p.includeYoung && e.m.ret.m3 === null) return no("too-young", "상장 3개월 미만이라 지표 계산 불가");
-  if (p.maxFee !== null && e.fee !== null && e.fee > p.maxFee) return no("high-fee", `총보수 ${e.fee}% — 상한 ${p.maxFee}% 초과`);
+  if (e.m.avgValue20 === null || e.m.avgValue20 < MIN_AVG_VALUE) return no("low-liquidity", tr(`일평균 거래대금이 ${MIN_AVG_VALUE / 1e8}억원 미만이라 사고팔기 어려움`, `Average daily trading value is under ${fmtWon(MIN_AVG_VALUE)}, so it is hard to trade`));
+  if (!p.includeYoung && e.m.ret.y1 === null) return no("no-track-record", tr("상장 1년 미만이라 성과 검증 부족 (설정에서 포함 가능)", "Listed under 1 year, so the track record is too short (can be included in settings)"));
+  if (p.includeYoung && e.m.ret.m3 === null) return no("too-young", tr("상장 3개월 미만이라 지표 계산 불가", "Listed under 3 months, so metrics cannot be calculated"));
+  if (p.maxFee !== null && e.fee !== null && e.fee > p.maxFee) return no("high-fee", tr(`총보수 ${e.fee}% — 상한 ${p.maxFee}% 초과`, `Expense ratio ${e.fee}% — above the ${p.maxFee}% cap`));
 
   const cfg = PROFILES[p.profile];
   const vol = volOf(e);
   if (cfg.maxVol !== null && vol !== null && vol > cfg.maxVol) {
-    return no("risk-limit", `변동성 연 ${(vol * 100).toFixed(0)}% — ${cfg.label} 한도(${(cfg.maxVol * 100).toFixed(0)}%) 초과`);
+    return no(
+      "risk-limit",
+      tr(
+        `변동성 연 ${(vol * 100).toFixed(0)}% — ${cfg.label} 한도(${(cfg.maxVol * 100).toFixed(0)}%) 초과`,
+        `Volatility ${(vol * 100).toFixed(0)}% a year — above the ${cfg.label} limit (${(cfg.maxVol * 100).toFixed(0)}%)`,
+      ),
+    );
   }
   const mdd = mddOf(e);
   if (cfg.maxMdd !== null && mdd !== null && -mdd > cfg.maxMdd) {
-    return no("risk-limit", `최대낙폭 ${(mdd * 100).toFixed(0)}% — ${cfg.label} 한도(-${(cfg.maxMdd * 100).toFixed(0)}%) 초과`);
+    return no(
+      "risk-limit",
+      tr(
+        `최대낙폭 ${(mdd * 100).toFixed(0)}% — ${cfg.label} 한도(-${(cfg.maxMdd * 100).toFixed(0)}%) 초과`,
+        `Max drawdown ${(mdd * 100).toFixed(0)}% — beyond the ${cfg.label} limit (-${(cfg.maxMdd * 100).toFixed(0)}%)`,
+      ),
+    );
   }
   return null;
 }

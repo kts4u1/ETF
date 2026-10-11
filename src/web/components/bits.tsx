@@ -1,16 +1,38 @@
+import { tr, langRecord } from "../../core/i18n";
+import { themeLabel } from "../../core/i18n-labels";
 import { ASSET_CLASS_LABEL, RISK_LABEL, TAG_LABEL, riskGrade, type Caution } from "../../core/explain";
+import { MARKET_LABEL, MARKET_SHORT, marketOf } from "../../core/market";
+import { fxNote } from "../../core/market-view";
 import { FACTOR_KEYS, FACTOR_LABELS } from "../../core/scoring";
 import type { EtfRecord, FactorScores } from "../../core/types";
+
+/**
+ * 상장 시장 배지. 색(국내=회색, 해외=파랑 테두리)에만 기대지 않고 항상 "국내"/"미국" 글자를 함께 적는다.
+ * 스크린리더에는 "상장 시장 미국"으로 읽힌다.
+ */
+export function MarketBadge({ etf }: { etf: Pick<EtfRecord, "market"> }) {
+  const m = marketOf(etf);
+  return (
+    <span className={`mkt mkt-${m.toLowerCase()}`} title={tr(`상장 시장: ${MARKET_LABEL[m]}`, `Listing market: ${MARKET_LABEL[m]}`)}>
+      <span className="sr-only">{tr("상장 시장 ", "Listing market ")}</span>{MARKET_SHORT[m]}
+    </span>
+  );
+}
+
+/** 해외(미국) 상장 ETF의 수치가 원화 환산값임을 밝히는 한 줄 */
+export function FxNote({ children }: { children?: React.ReactNode }) {
+  return <p className="fx-note" role="note">{children ?? fxNote()}</p>;
+}
 
 /** 위험 등급 5칸 미터. 색이 아니라 채워진 칸 수 + 텍스트 라벨로 전달한다. */
 export function RiskPips({ etf, showLabel = true }: { etf: EtfRecord; showLabel?: boolean }) {
   const g = riskGrade(etf);
   return (
-    <span className="risk" title={`위험 등급 ${g}/5 — 최근 변동성 기준(레버리지·인버스는 항상 5)`}>
+    <span className="risk" title={tr(`위험 등급 ${g}/5 — 최근 변동성 기준(레버리지·인버스는 항상 5)`, `Risk grade ${g}/5 — based on recent volatility (leveraged/inverse is always 5)`)}>
       <span className="pips" aria-hidden>
         {[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= g ? "on" : ""} />)}
       </span>
-      {showLabel && <span className="risk-label">위험 {RISK_LABEL[g]}</span>}
+      {showLabel && <span className="risk-label">{tr(`위험 ${RISK_LABEL[g]}`, `${RISK_LABEL[g]} risk`)}</span>}
     </span>
   );
 }
@@ -18,10 +40,11 @@ export function RiskPips({ etf, showLabel = true }: { etf: EtfRecord; showLabel?
 export function TagChips({ etf, max = 6 }: { etf: EtfRecord; max?: number }) {
   const t = etf.tax;
   const chips: { text: string; kind?: string }[] = [{ text: ASSET_CLASS_LABEL[t.assetClass] }];
-  if (t.theme) chips.push({ text: t.theme });
+  if (t.theme) chips.push({ text: themeLabel(t.theme) ?? t.theme });
   for (const tag of t.tags) chips.push({ text: TAG_LABEL[tag] ?? tag, kind: tag === "leveraged" || tag === "inverse" ? "danger" : undefined });
   return (
     <span className="chips">
+      <MarketBadge etf={etf} />
       {chips.slice(0, max).map((c, i) => <span key={i} className={`chip${c.kind ? ` chip-${c.kind}` : ""}`}>{c.text}</span>)}
     </span>
   );
@@ -30,7 +53,7 @@ export function TagChips({ etf, max = 6 }: { etf: EtfRecord; max?: number }) {
 /** 팩터 점수 막대. 단일 색(순차 블루), 두께 얇게, 값은 텍스트로 병기. */
 export function FactorBars({ factors }: { factors: FactorScores }) {
   return (
-    <ul className="factors" aria-label="항목별 점수">
+    <ul className="factors" aria-label={tr("항목별 점수", "Scores by factor")}>
       {FACTOR_KEYS.map((k) => (
         <li key={k} title={FACTOR_LABELS[k].hint}>
           <span className="factor-name">{FACTOR_LABELS[k].name}</span>
@@ -42,7 +65,10 @@ export function FactorBars({ factors }: { factors: FactorScores }) {
   );
 }
 
-const LEVEL_LABEL = { high: "고위험", warn: "주의", info: "참고" } as const;
+const LEVEL_LABEL = langRecord(
+  { high: "고위험", warn: "주의", info: "참고" },
+  { high: "High risk", warn: "Caution", info: "Note" },
+);
 const LEVEL_ICON = { high: "▲", warn: "!", info: "i" } as const;
 
 /** 아이콘 + 라벨 + 문장. 색에만 의존하지 않는다. */
@@ -70,8 +96,11 @@ export function Delta({ v, digits = 1 }: { v: number | null; digits?: number }) 
 export function Disclaimer({ compact = false }: { compact?: boolean }) {
   return (
     <p className={`disclaimer${compact ? " compact" : ""}`} role="note">
-      <b>투자 유의사항</b> 이 앱은 과거 데이터로 ETF를 분류·비교하는 정보 제공 도구이며 투자 권유나 자문이 아닙니다.
-      과거 성과는 미래 수익을 보장하지 않고, 투자 손실은 투자자 본인에게 귀속됩니다. 투자 전 상품설명서와 운용사 공시를 확인하세요.
+      <b>{tr("투자 유의사항", "Important")}</b>{" "}
+      {tr(
+        "이 앱은 과거 데이터로 ETF를 분류·비교하는 정보 제공 도구이며 투자 권유나 자문이 아닙니다. 과거 성과는 미래 수익을 보장하지 않고, 투자 손실은 투자자 본인에게 귀속됩니다. 투자 전 상품설명서와 운용사 공시를 확인하세요.",
+        "This app is an information tool that classifies and compares ETFs using past data. It is not investment advice or a solicitation. Past performance does not guarantee future returns, and any investment losses are borne by the investor. Check the prospectus and the issuer's disclosures before investing.",
+      )}
     </p>
   );
 }
