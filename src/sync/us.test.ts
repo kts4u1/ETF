@@ -255,12 +255,18 @@ describe("선별 기준 경계값", () => {
   });
 });
 
-describe("assertFailureRate: 종목별 실패가 후보의 10% 를 넘으면 중단", () => {
-  it("정확히 10% 는 통과, 넘으면 중단", () => {
+describe("assertFailureRate: 종목별 실패가 허용 수(후보의 0.3% 와 2개 중 큰 쪽)를 넘으면 중단", () => {
+  it("작은 후보에서는 2개까지 통과, 넘으면 중단", () => {
     expect(() => assertFailureRate("1차", 2, 20)).not.toThrow();
     expect(() => assertFailureRate("1차", 3, 20)).toThrow(/20개 중 3개/);
     expect(() => assertFailureRate("1차", 0, 0)).not.toThrow();
-    expect(() => assertFailureRate("1차", 1, 5)).toThrow();
+    expect(() => assertFailureRate("1차", 2, 5)).not.toThrow();
+    expect(() => assertFailureRate("1차", 3, 5)).toThrow();
+  });
+  it("큰 후보에서는 0.3% 까지: 실제 규모(2,704개)에서 8개는 통과, 9개는 중단 — 429 로 36개가 실패한 첫 시도는 다시 시도한다", () => {
+    expect(() => assertFailureRate("2차", 8, 2704)).not.toThrow();
+    expect(() => assertFailureRate("2차", 9, 2704)).toThrow(/2704개 중 9개/);
+    expect(() => assertFailureRate("2차", 36, 2704)).toThrow(/다시 실행/);
   });
 });
 
@@ -556,7 +562,7 @@ describe("syncUs", () => {
       expect(n.chart.filter((s) => s !== "KRW=X")).toEqual([]);
     });
 
-    it("1차: 실패 10% 이내는 failed 에 모으고 계속, 넘으면 중단(없는 종목 404 는 실패가 아님)", async () => {
+    it("1차: 실패가 허용 수 이내면 failed 에 모으고 계속, 넘으면 중단(없는 종목 404 는 실패가 아님)", async () => {
       const ok = makeDeps(twenty, { TA: { chartError: "quick" }, TB: { chartError: "quick" } });
       const r = await run(ok.deps);
       expect(r.failed.map((f) => f.split(" ")[0])).toEqual(["TA", "TB"]);
@@ -577,7 +583,7 @@ describe("syncUs", () => {
       expect(r2.etfs).toHaveLength(8);
     });
 
-    it("2차: 펀드 정보 실패가 통과 종목의 10% 를 넘으면 중단", async () => {
+    it("2차: 펀드 정보 실패가 허용 수를 넘으면 중단", async () => {
       const ok = makeDeps(twenty, { TA: { info: "error" }, TB: { info: "error" } });
       const r = await run(ok.deps);
       expect(r.failed).toHaveLength(2);
@@ -589,7 +595,7 @@ describe("syncUs", () => {
       await expect(run(bad.deps)).rejects.toThrow(/2차\(펀드 정보\)/);
     });
 
-    it("3차: 장기 시세 실패가 통과 종목의 10% 를 넘으면 중단", async () => {
+    it("3차: 장기 시세 실패가 허용 수를 넘으면 중단", async () => {
       const ok = makeDeps(twenty, { TA: { chartError: "price" }, TB: { chartError: "price" } });
       const r = await run(ok.deps);
       expect(r.failed).toHaveLength(2);

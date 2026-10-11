@@ -1,13 +1,26 @@
 # 데이터 자동 갱신: 평일 22:23 UTC(한국 시간 다음 날 07:23 — 미국·한국 장이 모두 끝난 뒤)에 sync 를 돌려
-# 새로 상장한 ETF와 최신 시세를 반영하고, 의미 있게 바뀌었을 때만 기본 브랜치에 커밋한다.
-# 기본 브랜치에 병합돼 있어야 스케줄이 동작한다. GitHub 서버에서 네이버·야후 접속이 막혀 있으면 이 작업이 실패로 표시된다
-# (실패해도 아무것도 커밋하지 않는다). 수동 실행: Actions 탭 → Refresh data → Run workflow.
+# 새로 상장한 ETF와 최신 시세를 반영하고, 커밋할 만한 변화가 있을 때만 기본 브랜치에 커밋한다.
+#
+# 커밋 기준(src/sync/refresh-decision.ts): ETF 구성이 바뀌면(신규 상장·상장폐지·해외 신규 티커) 바로 커밋하고,
+# 시세만 바뀐 경우에는 마지막 커밋의 기준일보다 5일 이상 새로울 때만 커밋한다 — 수치 파일이 gzip 으로 약 2.4MB 라
+# 매일 커밋하면 저장소가 연 수백 MB 늘기 때문이다. 매 거래일 커밋하려면 수동 실행의 stale_days 에 1 을 넣는다
+# (정기 실행에 쓰려면 아래 REFRESH_STALE_DAYS 기본값을 바꾼다).
+# 종목이 갑자기 많이 줄거나 기준일이 과거로 가면 커밋하지 않고 실패로 끝난다(알림은 GitHub 기본 메일).
+#
+# 기본 브랜치에 병합돼 있어야 스케줄이 동작한다. 기본 브랜치가 아닌 곳에서 수동 실행하면 수집·검증만 하고 커밋은 하지 않는다.
+# GitHub 서버에서 네이버·야후 접속이 막혀 있으면 접속 점검 단계에서 이유와 함께 빠르게 실패한다(아무것도 커밋하지 않는다).
+# 수동 실행: Actions 탭 → Refresh data → Run workflow.
 name: Refresh data
 
 on:
   schedule:
     - cron: "23 22 * * 1-5"
   workflow_dispatch:
+    inputs:
+      stale_days:
+        description: "시세만 바뀐 경우 마지막 커밋보다 이만큼(일) 이상 새로울 때 커밋 — 1 이면 거래일마다(비우면 5)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -27,17 +40,38 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: 데이터 갱신(sync → 테스트 → 빌드 → 변경 판정)
+      - name: 데이터 갱신(접속 점검 → sync → 테스트 → 빌드 → 커밋 여부 판정)
         id: refresh
+        env:
+          REFRESH_STALE_DAYS: ${{ inputs.stale_days || '5' }}
         run: |
           set -o pipefail
-          bash scripts/refresh-data.sh | tee refresh.log
-          echo "result=$(grep -o 'REFRESH_RESULT=.*' refresh.log | tail -n 1 | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+          bash scripts/refresh-data.sh 2>&1 | tee refresh.log
+          result="$(grep -o 'REFRESH_RESULT=.*' refresh.log | tail -n 1 | cut -d= -f2 | tr -d '\r ')"
+          if [ -z "$result" ]; then echo "REFRESH_RESULT 를 찾지 못했습니다" >&2; exit 1; fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - name: 결과 요약
+        if: always()
+        run: |
+          {
+            echo "### 데이터 갱신 결과"
+            grep -E '^(PROBE_|REFRESH_RESULT=|변경:|참고:|⚠ 이상 징후:|[✓✗] )' refresh.log || echo "(요약할 줄이 없습니다)"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: 바뀐 데이터 커밋
-        if: steps.refresh.outputs.result == 'changed'
+        if: steps.refresh.outputs.result == 'changed' && github.ref_name == github.event.repository.default_branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/data
-          git commit -m "chore(data): 자동 갱신 $(date -u +%F)"
-          git push
+          asof="$(node -p "const s=require('./public/data/snapshot.json'); 'KR '+s.asOf+(s.asOfUs?', US '+s.asOfUs:'')")"
+          git commit -m "chore(data): 자동 갱신 (${asof})"
+          for i in 1 2 3; do
+            if git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME"; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 10))
+          done
+          echo "푸시에 3번 실패했습니다." >&2
+          exit 1
+      - name: 기본 브랜치가 아니라서 커밋하지 않음(시험 실행)
+        if: steps.refresh.outputs.result == 'changed' && github.ref_name != github.event.repository.default_branch
+        run: echo "::notice::커밋할 변화가 있었지만 ${GITHUB_REF_NAME} 은 기본 브랜치가 아니라서 커밋하지 않았습니다."

@@ -10,6 +10,7 @@ import { cleanDescription, fetchDetail, fetchEtfList, fetchHoldings, fetchPrices
 import { buildHoldingsData } from "./build-holdings";
 import { cachedJson, readCache, today } from "./cache";
 import { loadDelistedEntries, syncDelisted } from "./delisted";
+import { assertWithinLimit, DOMESTIC_DETAIL_RULE, DOMESTIC_PRICE_RULE } from "./failure-policy";
 import { mapPool } from "./pool";
 import { round, roundMetrics } from "./rounding";
 import { buildUsIndex, syncUs, type UsDeps, type UsStats, type UsSyncResult } from "./us";
@@ -104,6 +105,11 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
     (it) => cachedJson<Detail>(join(CACHE_DIR, "detail", `${it.code}.json`), force, () => fetchDetail(it.code)),
     progress("상세"),
   );
+
+  // 시세를 못 받은 ETF 는 목록에서 빠지고 상세를 못 받으면 총보수·운용사가 빈다. 일부만 실패해도 조용히 저장하지 않고 중단한다
+  // (무인 자동 갱신이 "ETF 가 빠진 스냅샷"을 커밋하지 않도록). 중단되면 같은 날 다시 실행해 실패한 것만 채운다.
+  assertWithinLimit("국내 ETF 시세", priceRun.errors.size, list.length, DOMESTIC_PRICE_RULE);
+  assertWithinLimit("국내 ETF 상세(총보수·운용사)", detailRun.errors.size, list.length, DOMESTIC_DETAIL_RULE);
 
   let holdingsFailed = 0;
   if (!opts.skipHoldings) {

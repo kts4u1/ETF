@@ -5,8 +5,9 @@
  * 거른 뒤의 종목에만 한다. 수익률은 달러 수정종가에 "같은 날" 원/달러 환율을 곱한 원화 시계열로 계산해서
  * 기존 computeMetrics 를 그대로 쓴다(환율 변동이 수익률·변동성·낙폭에 반영된다).
  *
- * 실패 정책: 목록·환율·세션 실패는 즉시 중단한다. 종목별 실패는 failed 에 모으되 한 단계에서 후보의 10% 를 넘으면
- * 중단한다 — 조용히 줄어든 유니버스로 스냅샷을 만들지 않기 위해서다.
+ * 실패 정책: 목록·환율·세션 실패는 즉시 중단한다. 종목별 실패는 failed 에 모으되 한 단계에서 허용 수(failure-policy.ts 의
+ * US_STAGE_RULE: 후보의 0.3% 와 2개 중 큰 쪽)를 넘으면 중단한다 — 조용히 줄어든 유니버스로 스냅샷을 만들지 않기 위해서다.
+ * 실패한 종목은 스냅샷과 검색 색인에서 모두 빠지므로 기준을 낮게 두고, 중단되면 같은 날 다시 실행해 캐시로 채운다.
  */
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import { cleanSeries, computeMetrics, indexOnOrBefore, shiftMonths } from "../co
 import { classifyUs } from "../core/taxonomy-us";
 import type { EtfRecord, PriceSeries, UsIndexFile, UsSkipReason } from "../core/types";
 import { cachedJson } from "./cache";
+import { assertWithinLimit, US_STAGE_RULE } from "./failure-policy";
 import { HttpError, withRetry } from "./naver";
 import { mapPool } from "./pool";
 import { round, roundMetrics } from "./rounding";
@@ -380,13 +382,9 @@ export function buildUsIndex(notCollected: UsSyncResult["notCollected"], asOf: s
   return { version: 1, asOf, etfs };
 }
 
-/** 한 단계의 종목별 실패가 후보의 10% 를 넘으면 중단 */
+/** 한 단계의 종목별 실패가 허용 수(후보의 0.3% 와 2개 중 큰 쪽)를 넘으면 중단 */
 export function assertFailureRate(stage: string, failures: number, total: number): void {
-  if (failures * 10 > total) {
-    throw new Error(
-      `미국 ETF ${stage} 단계에서 ${total}개 중 ${failures}개가 실패했습니다(허용 10% 이내). 줄어든 유니버스로 스냅샷을 만들지 않습니다. 같은 날 다시 실행하면 이미 받은 것은 캐시에서 읽습니다.`,
-    );
-  }
+  assertWithinLimit(`미국 ETF ${stage} 단계`, failures, total, US_STAGE_RULE);
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));

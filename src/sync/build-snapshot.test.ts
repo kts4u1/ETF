@@ -229,7 +229,7 @@ describe("syncAll", () => {
     await expect(syncAll({ usDeps: noFx, log })).rejects.toThrow(/환율/);
     await expectUntouched();
 
-    const flaky = makeDeps(syms, { UA: { chartError: "quick" }, UB: { chartError: "quick" } }).deps; // 10개 중 2개(20%)
+    const flaky = makeDeps(syms, { UA: { chartError: "quick" }, UB: { chartError: "quick" }, UC: { chartError: "quick" } }).deps; // 10개 중 3개(허용 2개 초과)
     await expect(syncAll({ usDeps: flaky, force: true, log })).rejects.toThrow(/1차\(시세\)/);
     await expectUntouched();
   });
@@ -242,7 +242,7 @@ describe("syncAll", () => {
     await expect(readFile(out("holdings.json"), "utf8")).rejects.toThrow();
   });
 
-  it("미국 종목별 실패(10% 이내)는 failed 에 담겨 돌아오고 나머지는 저장된다", async () => {
+  it("미국 종목별 실패(허용 수 이내)는 failed 에 담겨 돌아오고 나머지는 저장된다", async () => {
     const syms = Array.from({ length: 20 }, (_, i) => `V${String.fromCharCode(65 + i)}`);
     const { deps } = makeDeps(syms, { VA: { info: "error" } });
     const r = await syncAll({ usDeps: deps, log, skipHoldings: true });
@@ -282,5 +282,41 @@ describe("syncAll", () => {
     const { deps, n } = makeDeps(["AAA", "BBB", "CCC"], { AAA: { shape: { vol: 900_000 } }, BBB: { shape: { vol: 800_000 } }, CCC: { shape: { vol: 700_000 } } });
     await syncAll({ usDeps: deps, usLimit: 2, log, skipHoldings: true });
     expect(n.info.sort()).toEqual(["AAA", "BBB"]);
+  });
+
+  describe("국내 수집 실패 기준: 일부가 조용히 빠진 스냅샷을 쓰지 않는다", () => {
+    const FIVE = ["069500", "360750", "133690", "305720", "228790"].map((code, i) => ({ code, name: `ETF${i}`, tab: 1, price: 10_000, changeRate: 0, nav: 10_000, aumEok: 1000 - i }));
+    const failPrices = (codes: string[]) => {
+      const ok = vi.mocked(naver.fetchPrices).getMockImplementation() ?? (async () => ({ dates: [], close: [], volume: [] }));
+      vi.mocked(naver.fetchPrices).mockImplementation(async (code, n) => (codes.includes(code) ? Promise.reject(new HttpError(429, `price/${code}`)) : ok(code, n)));
+    };
+
+    it("시세 실패가 허용 수(2개)를 넘으면 미국 수집을 시작하기 전에 중단하고 파일을 쓰지 않는다", async () => {
+      await seedOld();
+      vi.mocked(naver.fetchEtfList).mockResolvedValue(FIVE.map((r) => ({ ...r })) as never);
+      failPrices(["069500", "360750", "133690"]);
+      const { deps, n } = makeDeps(["SPY"], {});
+      await expect(syncAll({ usDeps: deps, log, skipHoldings: true })).rejects.toThrow(/국내 ETF 시세: 5개 중 3개.*다시 실행/);
+      expect(n.list).toBe(0);
+      await expectUntouched();
+    });
+
+    it("시세 실패가 허용 수 이내면 failed 에 담고 나머지는 저장한다", async () => {
+      vi.mocked(naver.fetchEtfList).mockResolvedValue(FIVE.map((r) => ({ ...r })) as never);
+      failPrices(["069500", "360750"]);
+      const { deps } = makeDeps(["SPY"], {});
+      const r = await syncAll({ usDeps: deps, log, skipHoldings: true });
+      expect(r.failed.filter((f) => f.includes("(시세)"))).toHaveLength(2);
+      const kr = (await readJson<Snapshot>("snapshot.json")).etfs.filter((e) => e.market !== "US");
+      expect(kr.map((e) => e.code)).toEqual(["133690", "305720", "228790"]);
+    });
+
+    it("상세(총보수·운용사) 실패가 허용 수(5개)를 넘으면 중단한다", async () => {
+      const many = Array.from({ length: 6 }, (_, i) => ({ code: `10000${i}`, name: `ETF${i}`, tab: 1, price: 10_000, changeRate: 0, nav: 10_000, aumEok: 1000 - i }));
+      vi.mocked(naver.fetchEtfList).mockResolvedValue(many.map((r) => ({ ...r })) as never);
+      vi.mocked(naver.fetchDetail).mockRejectedValue(new HttpError(500, "detail"));
+      const { deps } = makeDeps(["SPY"], {});
+      await expect(syncAll({ usDeps: deps, log, skipHoldings: true })).rejects.toThrow(/국내 ETF 상세\(총보수·운용사\): 6개 중 6개/);
+    });
   });
 });
