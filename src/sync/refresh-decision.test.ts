@@ -125,3 +125,87 @@ describe("decideRefresh: 커밋할지 판정", () => {
     expect(decideRefresh(WAS, now, WAS_IDX, WAS_IDX).result).toBe("suspicious");
   });
 });
+
+describe("decideRefresh: 일시 오류로 못 받은 종목, 승인, 기준일 검증", () => {
+  it("이번에 일시 오류로 못 받은 종목(unavailable)은 삭제로 세지 않는다 — 빠졌다가 돌아올 때 불필요한 커밋이 두 번 생기지 않게", () => {
+    const now = snap("20261002", "20261002", 970, COLLECTED); // 국내 끝의 30개가 이번에 없음
+    const missing = kr(1000).slice(970).map((e) => e.code);
+    expect(decideRefresh(WAS, now, WAS_IDX, WAS_IDX).result).toBe("suspicious"); // 알 수 없으면 대량 감소
+    const d = decideRefresh(WAS, now, WAS_IDX, WAS_IDX, { unavailable: missing });
+    expect(d.result).toBe("unchanged");
+  });
+
+  it("해외 티커도 같다: 못 받은 수집 종목 몇 개는 삭제가 아니고, 그것 때문에 changed 가 되지도 않는다", () => {
+    const now = snap("20261002", "20261002", 1000, COLLECTED.slice(3));
+    expect(decideRefresh(WAS, now, WAS_IDX, WAS_IDX).result).toBe("changed"); // 모르면 삭제 3개
+    expect(decideRefresh(WAS, now, WAS_IDX, WAS_IDX, { unavailable: COLLECTED.slice(0, 3) }).result).toBe("unchanged");
+  });
+
+  it("못 받은 종목이 아닌 것이 함께 사라지면 그 부분은 삭제로 센다", () => {
+    const now = snap("20261002", "20261002", 995, COLLECTED); // 5개 없음
+    const d = decideRefresh(WAS, now, WAS_IDX, WAS_IDX, { unavailable: kr(1000).slice(995, 997).map((e) => e.code) });
+    expect(d.result).toBe("changed");
+    expect(d.reasons[0]).toContain("삭제 3개");
+  });
+
+  it("acceptShrink: 대량 감소를 승인하면 changed 로 받아들이고 사유에 남긴다", () => {
+    const now = snap("20261002", "20261002", 900, COLLECTED);
+    expect(decideRefresh(WAS, now, WAS_IDX, WAS_IDX).result).toBe("suspicious");
+    const d = decideRefresh(WAS, now, WAS_IDX, WAS_IDX, { acceptShrink: true });
+    expect(d.result).toBe("changed");
+    expect(d.reasons[0]).toMatch(/^승인된 대량 감소 — 국내 ETF 1000개 → 900개/);
+    expect(d.reasons[1]).toContain("삭제 100개");
+  });
+
+  it("acceptShrink 로도 기준일 이상은 풀리지 않는다", () => {
+    const now = snap("20260930", "20261002", 900, COLLECTED);
+    const d = decideRefresh(WAS, now, WAS_IDX, WAS_IDX, { acceptShrink: true });
+    expect(d.result).toBe("suspicious");
+    expect(d.reasons[0]).toContain("과거로");
+  });
+
+  it("국내 기준일이 8자리 숫자가 아니면 suspicious(검사가 조용히 건너뛰어지지 않는다)", () => {
+    for (const bad of ["", "2026-10-09", "abc", "202610"]) {
+      const d = decideRefresh(WAS, { ...WAS, asOf: bad }, WAS_IDX, WAS_IDX);
+      expect(d.result, `asOf=${JSON.stringify(bad)}`).toBe("suspicious");
+      expect(d.reasons[0]).toContain("올바르지 않습니다");
+    }
+    expect(decideRefresh(WAS, { ...WAS, asOfUs: "bad" }, WAS_IDX, WAS_IDX).reasons[0]).toContain("해외 기준일이 올바르지 않습니다");
+  });
+
+  it("이전에 있던 해외 기준일이 사라지면 suspicious", () => {
+    const d = decideRefresh(WAS, { asOf: "20261002", etfs: WAS.etfs }, WAS_IDX, WAS_IDX);
+    expect(d.result).toBe("suspicious");
+    expect(d.reasons[0]).toContain("해외 기준일이 사라졌습니다");
+  });
+
+  it("today 를 주면 이틀 넘게 미래인 기준일은 suspicious, 하루 앞(시간대 차이)은 정상", () => {
+    const now = (asOf: string, asOfUs: string) => snap(asOf, asOfUs, 1000, COLLECTED);
+    expect(decideRefresh(WAS, now("20261008", "20261008"), WAS_IDX, WAS_IDX, { today: "20261007" }).result).toBe("changed"); // +1일 (6일 차이로 changed)
+    expect(decideRefresh(WAS, now("20261009", "20261008"), WAS_IDX, WAS_IDX, { today: "20261007" }).result).toBe("changed"); // +2일 = 허용 끝
+    const d = decideRefresh(WAS, now("20261010", "20261008"), WAS_IDX, WAS_IDX, { today: "20261007" });
+    expect(d.result).toBe("suspicious");
+    expect(d.reasons[0]).toContain("국내 기준일이 미래입니다");
+    expect(decideRefresh(WAS, now("20261008", "20261012"), WAS_IDX, WAS_IDX, { today: "20261007" }).reasons[0]).toContain("해외 기준일이 미래입니다");
+  });
+
+  it("today 를 주지 않으면(또는 형식이 틀리면) 미래 검사는 하지 않는다", () => {
+    expect(decideRefresh(WAS, snap("20301231", "20301231", 1000, COLLECTED), WAS_IDX, WAS_IDX).result).toBe("changed");
+    expect(decideRefresh(WAS, snap("20301231", "20301231", 1000, COLLECTED), WAS_IDX, WAS_IDX, { today: "x" }).result).toBe("changed");
+  });
+
+  it("연말·윤년 경계의 일수 계산: 20261230 → 20270104 는 5일, 20280228 → 20280303 은 4일(윤년)", () => {
+    const a = snap("20261230", "20261230", 10, []);
+    expect(decideRefresh(a, snap("20270104", "20261230", 10, []), null, null).reasons.join()).toContain("(5일)");
+    const b = snap("20280228", "20280228", 10, []);
+    expect(decideRefresh(b, snap("20280303", "20280228", 10, []), null, null).result).toBe("unchanged");
+  });
+
+  it("해외 수집 종목 수의 비율 검사는 정확히 50개부터 적용된다", () => {
+    const was50 = snap("20261002", "20261002", 100, tickers(50, "S"));
+    expect(decideRefresh(was50, snap("20261002", "20261002", 100, tickers(40, "S")), null, idx(tickers(10, "S", 40))).result).toBe("unchanged"); // 80% 유지
+    expect(decideRefresh(was50, snap("20261002", "20261002", 100, tickers(39, "S")), null, idx(tickers(11, "S", 39))).result).toBe("suspicious");
+    const was49 = snap("20261002", "20261002", 100, tickers(49, "S"));
+    expect(decideRefresh(was49, snap("20261002", "20261002", 100, tickers(10, "S")), null, idx(tickers(39, "S", 10))).result).toBe("unchanged");
+  });
+});

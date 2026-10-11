@@ -251,6 +251,15 @@ describe("syncAll", () => {
     expect((await readJson<Snapshot>("snapshot.json")).etfs).toHaveLength(2 + 19);
   });
 
+  it("실패가 없으면 sync-failures.json 의 retryable 이 비어 있다(이전 실행의 값이 남지 않는다)", async () => {
+    await mkdir(".cache", { recursive: true });
+    await writeFile(".cache/sync-failures.json", JSON.stringify({ retryable: ["OLD"] }));
+    const { deps } = makeDeps(["SPY"], {});
+    const r = await syncAll({ usDeps: deps, log, skipHoldings: true });
+    expect(r.retryable).toEqual([]);
+    expect(JSON.parse(await readFile(".cache/sync-failures.json", "utf8")).retryable).toEqual([]);
+  });
+
   it("--skip-us: 국내만 저장하고, 기존 파일의 해외 ETF 가 지워진다는 것을 로그로 분명히 알린다", async () => {
     await mkdir(join("public", "data"), { recursive: true });
     const old = { version: 1, asOf: "20261001", etfs: [{ code: "069500" }, { code: "SPY", market: "US" }, { code: "QQQ", market: "US" }, { code: "IWM", market: "US" }] };
@@ -309,6 +318,9 @@ describe("syncAll", () => {
       expect(r.failed.filter((f) => f.includes("(시세)"))).toHaveLength(2);
       const kr = (await readJson<Snapshot>("snapshot.json")).etfs.filter((e) => e.market !== "US");
       expect(kr.map((e) => e.code)).toEqual(["133690", "305720", "228790"]);
+      // 일시 오류로 못 받은 종목은 재시도·커밋 판정이 읽을 수 있게 파일로도 남는다
+      expect(r.retryable.sort()).toEqual(["069500", "360750"]);
+      expect(JSON.parse(await readFile(".cache/sync-failures.json", "utf8"))).toMatchObject({ retryable: expect.arrayContaining(["069500", "360750"]) });
     });
 
     it("상세(총보수·운용사) 실패가 허용 수(5개)를 넘으면 중단한다", async () => {

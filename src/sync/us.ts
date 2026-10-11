@@ -362,6 +362,8 @@ export interface UsSyncResult {
   fx: { rate: number; date: string };
   /** 종목별 실패 사유("티커 (단계: 사유)") */
   failed: string[];
+  /** failed 중 호출 제한(429)·네트워크 같은 일시 오류로 못 받은 종목의 티커 — 같은 날 다시 실행하면 캐시로 채울 수 있다(USD 가 아닌 종목·시세 부족은 제외) */
+  retryable: string[];
   stats: UsStats;
   /** 수집 기준을 못 넘어 데이터에 들지 못한 종목(검색 색인용). 실패한 종목은 failed 에 있고 여기에는 없다 */
   notCollected: { symbol: string; name: string; reason: UsSkipReason }[];
@@ -397,6 +399,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   for (const sub of ["quick", "info", "price"]) await mkdir(join(dir, sub), { recursive: true });
   const nowUnix = Math.floor((opts.nowMs ?? Date.now()) / 1000);
   const failed: string[] = [];
+  const retryable: string[] = [];
   const notCollected: UsSyncResult["notCollected"] = [];
 
   const progress = (label: string) => {
@@ -472,6 +475,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   list.rows.forEach((r, i) => {
     if (quickRun.errors.has(i)) {
       quickFailures++;
+      retryable.push(r.symbol);
       failed.push(`${r.symbol} (1차 시세: ${msg(quickRun.errors.get(i))})`);
       return;
     }
@@ -520,6 +524,7 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   quickPassed.forEach((r, i) => {
     if (infoRun.errors.has(i)) {
       infoFailures++;
+      retryable.push(r.symbol);
       failed.push(`${r.symbol} (펀드 정보: ${msg(infoRun.errors.get(i))})`);
       return;
     }
@@ -563,7 +568,10 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
       priceFailures++;
       failed.push(`${r.symbol} (시세: ${why})`);
     };
-    if (priceRun.errors.has(i)) return fail(msg(priceRun.errors.get(i)));
+    if (priceRun.errors.has(i)) {
+      retryable.push(r.symbol);
+      return fail(msg(priceRun.errors.get(i)));
+    }
     const chart = priceRun.results[i];
     if (!chart) return fail("응답 없음");
     if (notUsd(chart)) return fail(`통화가 USD 가 아님 ${chart.currency}`);
@@ -579,5 +587,5 @@ export async function syncUs(opts: SyncUsOptions = {}, deps: UsDeps = createUsDe
   stats.final = etfs.length;
   const asOfUs = etfs.reduce((mx, e) => (e.m.asOf > mx ? e.m.asOf : mx), "");
   log(`미국 ETF ${etfs.length}개, 시세 기준일 ${asOfUs}${failed.length ? `, 실패 ${failed.length}건` : ""}`);
-  return { etfs, series, asOfUs, fx: fxNow, failed, stats, notCollected };
+  return { etfs, series, asOfUs, fx: fxNow, failed, retryable, stats, notCollected };
 }

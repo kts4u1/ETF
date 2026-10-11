@@ -20,6 +20,11 @@ export { cachedJson, roundMetrics };
 
 export const CACHE_DIR = ".cache/naver";
 export const OUT_DIR = "public/data";
+/**
+ * 이번 수집에서 일시 오류로 못 받은 종목 코드(허용 수 이내라 저장은 됐지만 목록이나 상세에서 빠졌거나 비어 있는 것).
+ * public/data 와 함께 쓰이고, 재시도 판단(refresh-data.sh)과 커밋 판정(data-changed.ts)이 읽는다. .cache 아래라 커밋되지 않는다.
+ */
+export const SYNC_FAILURES_FILE = ".cache/sync-failures.json";
 /** 약 8년치. 5년 지표 + 백테스트 학습 구간 확보용. */
 const PRICE_DAYS = HISTORY_LIMIT_DAYS;
 /** 차트용 주간 격자 길이(약 5년). */
@@ -64,7 +69,7 @@ export async function loadCachedList(): Promise<ListItem[] | null> {
   return c ? c.data : null;
 }
 
-export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snapshot; failed: string[]; usStats?: UsStats }> {
+export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snapshot; failed: string[]; retryable: string[]; usStats?: UsStats }> {
   const log = opts.log ?? (() => {});
   const force = opts.force ?? false;
   const concurrency = opts.concurrency ?? 6;
@@ -132,6 +137,7 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   }
 
   const failed: string[] = [];
+  const retryable: string[] = [];
   const etfs: EtfRecord[] = [];
   const cleaned = new Map<string, PriceSeries>();
 
@@ -141,6 +147,7 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
     const raw = priceRun.results[i];
     if (!raw) {
       failed.push(`${it.code} ${it.name} (시세)`);
+      retryable.push(it.code);
       return;
     }
     const series = cleanSeries(raw);
@@ -148,7 +155,10 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
     const m = computeMetrics(series) ?? minimalMetrics(series, latestDate);
     if (series.dates.length < 2) failed.push(`${it.code} ${it.name} (신규 상장 — 시세 ${series.dates.length}행, 지표 없이 포함)`);
     const d = detailRun.results[i];
-    if (!d) failed.push(`${it.code} ${it.name} (상세 — 총보수 등 없이 포함)`);
+    if (!d) {
+      failed.push(`${it.code} ${it.name} (상세 — 총보수 등 없이 포함)`);
+      retryable.push(it.code);
+    }
     cleaned.set(it.code, series);
     etfs.push({
       code: it.code,
@@ -180,6 +190,7 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
   } else {
     us = await syncUs({ force, limit: opts.usLimit, concurrency, log }, opts.usDeps);
     for (const f of us.failed) failed.push(`미국 ${f}`);
+    retryable.push(...us.retryable);
   }
 
   // 세 파일을 모두 메모리에서 만든 뒤에 한꺼번에 쓴다. 중간 단계가 실패해도 일부만 새것인 산출물이 남지 않는다.
@@ -200,7 +211,8 @@ export async function syncAll(opts: SyncOptions = {}): Promise<{ snapshot: Snaps
     await writeFile(join(OUT_DIR, "holdings.json"), JSON.stringify(holdings.file));
     log(`구성종목 저장: ${holdings.available}개 ETF에서 겹침 계산 가능${holdingsFailed ? ` (수집 실패 ${holdingsFailed}건)` : ""}`);
   }
-  return { snapshot, failed, usStats: us?.stats };
+  await writeFile(SYNC_FAILURES_FILE, JSON.stringify({ generatedAt: snapshot.generatedAt, retryable }));
+  return { snapshot, failed, retryable, usStats: us?.stats };
 }
 
 /** 기존 snapshot.json 에 들어 있는 해외 ETF 수(없거나 읽을 수 없으면 0) */

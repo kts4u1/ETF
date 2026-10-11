@@ -566,6 +566,7 @@ describe("syncUs", () => {
       const ok = makeDeps(twenty, { TA: { chartError: "quick" }, TB: { chartError: "quick" } });
       const r = await run(ok.deps);
       expect(r.failed.map((f) => f.split(" ")[0])).toEqual(["TA", "TB"]);
+      expect(r.retryable).toEqual(["TA", "TB"]); // 일시 오류로 못 받은 종목: 같은 날 다시 실행하면 채울 수 있다
       expect(r.failed[0]).toContain("1차");
       expect(r.etfs).toHaveLength(18);
 
@@ -587,6 +588,7 @@ describe("syncUs", () => {
       const ok = makeDeps(twenty, { TA: { info: "error" }, TB: { info: "error" } });
       const r = await run(ok.deps);
       expect(r.failed).toHaveLength(2);
+      expect(r.retryable).toEqual(["TA", "TB"]);
       expect(r.failed[0]).toContain("펀드 정보");
 
       await rm(dir, { recursive: true, force: true });
@@ -599,6 +601,7 @@ describe("syncUs", () => {
       const ok = makeDeps(twenty, { TA: { chartError: "price" }, TB: { chartError: "price" } });
       const r = await run(ok.deps);
       expect(r.failed).toHaveLength(2);
+      expect(r.retryable).toEqual(["TA", "TB"]);
       expect(r.failed[0]).toContain("시세");
       expect(r.etfs).toHaveLength(18);
 
