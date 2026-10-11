@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { isEn, tr } from "../../core/i18n";
 
 export interface LineSeries {
   id: string;
@@ -51,6 +52,8 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
 
 const fmtDate = (d: string) => `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 
+const MONTH_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 /** x축 눈금: 데이터 길이에 맞춰 연/반기/분기 단위로 월이 바뀌는 지점에 라벨 */
 function xTicks(dates: string[]): { i: number; label: string }[] {
   const n = dates.length;
@@ -62,7 +65,7 @@ function xTicks(dates: string[]): { i: number; label: string }[] {
     if (ym === prev) return;
     prev = ym;
     const month = Number(d.slice(4, 6));
-    if ((month - 1) % step === 0 && i > 0) out.push({ i, label: month === 1 ? d.slice(0, 4) : `${month}월` });
+    if ((month - 1) % step === 0 && i > 0) out.push({ i, label: month === 1 ? d.slice(0, 4) : isEn() ? MONTH_EN[month - 1]! : `${month}월` });
   });
   return out;
 }
@@ -137,7 +140,7 @@ export function LineChart({ dates, series, yFormat, ariaLabel, height = 280 }: P
   return (
     <div className="chart" ref={wrapRef}>
       {multi && (
-        <ul className="legend" aria-label="범례">
+        <ul className="legend" aria-label={tr("범례", "Legend")}>
           {series.map((s) => (
             <li key={s.id}>
               <span className="legend-key" style={{ background: s.color }} aria-hidden />
@@ -196,10 +199,10 @@ export function LineChart({ dates, series, yFormat, ariaLabel, height = 280 }: P
         </div>
       )}
       <details className="chart-table">
-        <summary>표로 보기</summary>
+        <summary>{tr("표로 보기", "View as table")}</summary>
         <table>
           <thead>
-            <tr><th>날짜</th>{series.map((s) => <th key={s.id}>{s.label}</th>)}</tr>
+            <tr><th>{tr("날짜", "Date")}</th>{series.map((s) => <th key={s.id}>{s.label}</th>)}</tr>
           </thead>
           <tbody>
             {sampleIdx(n, 10).map((i) => (
