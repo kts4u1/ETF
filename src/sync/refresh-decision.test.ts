@@ -208,4 +208,19 @@ describe("decideRefresh: 일시 오류로 못 받은 종목, 승인, 기준일 �
     const was49 = snap("20261002", "20261002", 100, tickers(49, "S"));
     expect(decideRefresh(was49, snap("20261002", "20261002", 100, tickers(10, "S")), null, idx(tickers(39, "S", 10))).result).toBe("unchanged");
   });
+
+  it("force: 커밋할 변화가 없어도 changed 로 본다 — 하지만 이상 징후는 강제로 넘길 수 없다", () => {
+    const same = decideRefresh(WAS, WAS, WAS_IDX, WAS_IDX, { force: true });
+    expect(same.result).toBe("changed");
+    expect(same.reasons[0]).toContain("강제 갱신");
+    expect(decideRefresh(WAS, WAS, WAS_IDX, WAS_IDX).result).toBe("unchanged");
+    expect(decideRefresh(WAS, snap("20261009", "20261009", 900, COLLECTED), WAS_IDX, WAS_IDX, { force: true }).result).toBe("suspicious");
+    expect(decideRefresh(WAS, snap("20260930", "20261002", 1000, COLLECTED), WAS_IDX, WAS_IDX, { force: true }).result).toBe("suspicious");
+  });
+
+  it("force 이고 이미 바꿀 이유가 있으면 이유는 그대로(강제 문구를 덧붙이지 않는다)", () => {
+    const d = decideRefresh(WAS, snap("20261002", "20261002", 1001, COLLECTED), WAS_IDX, WAS_IDX, { force: true });
+    expect(d.reasons).toHaveLength(1);
+    expect(d.reasons[0]).toContain("신규 1개");
+  });
 });

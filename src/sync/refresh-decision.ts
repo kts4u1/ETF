@@ -40,6 +40,8 @@ export interface DecideOptions {
   today?: string;
   /** 사람이 대량 감소를 승인했다: 종목 감소 검사만 건너뛴다(기준일 검사는 그대로) */
   acceptShrink?: boolean;
+  /** 사람이 지금 최신 데이터로 갱신하라고 했다: 커밋할 변화가 없어도 changed 로 본다(이상 징후 검사는 그대로) */
+  force?: boolean;
 }
 
 export const DEFAULT_STALE_DAYS = 5;
@@ -131,5 +133,7 @@ export function decideRefresh(
     reasons.push(`해외 기준일 없음 → ${now.asOfUs}`);
   }
 
-  return reasons.length ? { result: "changed", reasons } : { result: "unchanged", reasons: [`마지막 커밋 대비 구성 변화 없고 시세 기준일 차이가 ${staleDays}일 미만`] };
+  if (reasons.length) return { result: "changed", reasons };
+  if (opts.force) return { result: "changed", reasons: ["수동 실행으로 강제 갱신(커밋할 만한 변화는 없었음)"] };
+  return { result: "unchanged", reasons: [`마지막 커밋 대비 구성 변화 없고 시세 기준일 차이가 ${staleDays}일 미만`] };
 }

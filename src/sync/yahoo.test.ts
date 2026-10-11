@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "./naver";
+import { RateLimitedError, Throttle } from "./throttle";
 import { FX_DATE_SHIFT_SEC, NotFoundError, YahooClient, fetchChart, fetchFundInfo, parseChart, parseFundInfo, ymdFromUnix, type FetchLike } from "./yahoo";
 
 const utc = (y: number, m: number, d: number, h = 0, min = 0) => Date.UTC(y, m - 1, d, h, min) / 1000;
@@ -454,5 +455,114 @@ describe("모듈 함수 fetchChart / fetchFundInfo: 주입한 클라이언트를
     expect((await fetchChart("SPY", 1, 2, client)).close).toEqual([10]);
     expect((await fetchFundInfo("SPY", client)).totalAssets).toBe(5);
     expect(y.calls.length).toBeGreaterThan(0);
+  });
+});
+
+// ───────── 호출 제한(429): 공유 쿨다운 ─────────
+
+/** 가짜 시계의 Throttle: sleep 이 시간을 앞으로 보내고 기록한다 */
+function fakeThrottle(opts: { maxLevel?: number } = {}) {
+  let t = 0;
+  const sleeps: number[] = [];
+  const cools: number[] = [];
+  const throttle = new Throttle({
+    now: () => t,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      // 같은 순간에 일어난 다른 작업들의 처리(microtask/macrotask)가 끝난 뒤에 시간이 흐르게 한다
+      await new Promise((r) => setImmediate(r));
+      t += ms;
+    },
+    maxLevel: opts.maxLevel,
+    onCooldown: (w) => cools.push(w),
+  });
+  return { throttle, sleeps, cools };
+}
+
+describe("YahooClient: 호출 제한(429) 공유 쿨다운", () => {
+  it("429 를 받으면 호출마다 따로 두드리지 않고 쿨다운(10초)을 쉰 뒤 이어서 성공한다", async () => {
+    const y = fakeYahoo({ quoteStatuses: [429] });
+    const th = fakeThrottle();
+    const info = await new YahooClient({ fetch: y.fetchFn, retry: { attempts: 4, baseMs: 1 }, throttle: th.throttle }).fetchFundInfo("SPY");
+    expect(info.totalAssets).toBe(5);
+    expect(th.cools).toEqual([10_000]);
+    expect(th.sleeps).toContain(10_000);
+    expect(y.calls.filter((c) => c.url.includes("/quoteSummary/"))).toHaveLength(2); // 429 한 번 + 성공 한 번
+  });
+
+  it("동시에 여러 호출이 429 를 받아도 쿨다운은 한 번만 쉬고 모두 성공한다", async () => {
+    const y = fakeYahoo({ quoteStatuses: [429, 429, 429, 429] });
+    const th = fakeThrottle();
+    const c = new YahooClient({ fetch: y.fetchFn, retry: { attempts: 4, baseMs: 1 }, throttle: th.throttle });
+    await c.openSession();
+    const r = await Promise.all(["A", "B", "C", "D"].map((s) => c.fetchFundInfo(s)));
+    expect(r).toHaveLength(4);
+    expect(th.cools).toEqual([10_000]);
+  });
+
+  it("Retry-After 헤더가 있으면 그 시간만큼 쉰다", async () => {
+    const y = fakeYahoo();
+    let first = true;
+    const f: FetchLike = async (url, init) => {
+      if (url.includes("/quoteSummary/") && first) {
+        first = false;
+        return new Response("", { status: 429, headers: { "Retry-After": "45" } });
+      }
+      return y.fetchFn(url, init);
+    };
+    const th = fakeThrottle();
+    await new YahooClient({ fetch: f, retry: { attempts: 3, baseMs: 1 }, throttle: th.throttle }).fetchFundInfo("SPY");
+    expect(th.cools).toEqual([45_000]);
+  });
+
+  it("세션(crumb) 발급이 429 여도 쉬었다가 다시 시도해 세션을 만든다", async () => {
+    const y = fakeYahoo();
+    let first = true;
+    const f: FetchLike = async (url, init) => {
+      if (url.includes("/v1/test/getcrumb") && first) {
+        first = false;
+        return new Response("", { status: 429 });
+      }
+      return y.fetchFn(url, init);
+    };
+    const th = fakeThrottle();
+    const info = await new YahooClient({ fetch: f, retry: { attempts: 3, baseMs: 1 }, throttle: th.throttle }).fetchFundInfo("SPY");
+    expect(info.totalAssets).toBe(5);
+    expect(th.cools).toEqual([10_000]);
+  });
+
+  it("쉬어도 풀리지 않으면 RateLimitedError — 이후 호출은 네트워크 요청 없이 즉시 실패한다", async () => {
+    const y = fakeYahoo({ quoteStatuses: Array(50).fill(429) });
+    const th = fakeThrottle({ maxLevel: 2 });
+    const c = new YahooClient({ fetch: y.fetchFn, retry: { attempts: 20, baseMs: 1 }, throttle: th.throttle });
+    await expect(c.fetchFundInfo("SPY")).rejects.toBeInstanceOf(RateLimitedError);
+    expect(th.cools).toEqual([10_000, 20_000]);
+    const requests = y.calls.length;
+    await expect(c.fetchFundInfo("QQQ")).rejects.toBeInstanceOf(RateLimitedError);
+    await expect(c.fetchChart("SPY", 1, 2)).rejects.toMatchObject({ status: 429 });
+    expect(y.calls.length).toBe(requests); // 더 두드리지 않았다
+  });
+
+  it("5xx 는 쿨다운 없이 호출별 백오프로 재시도한다", async () => {
+    const y = fakeYahoo({ quoteStatuses: [503, 500] });
+    const th = fakeThrottle();
+    const info = await new YahooClient({ fetch: y.fetchFn, retry: { attempts: 4, baseMs: 1 }, throttle: th.throttle }).fetchFundInfo("SPY");
+    expect(info.totalAssets).toBe(5);
+    expect(th.cools).toEqual([]);
+  });
+
+  it("그 밖의 4xx(403)는 쿨다운 없이 즉시 HttpError", async () => {
+    const f: FetchLike = async () => new Response("", { status: 403 });
+    const th = fakeThrottle();
+    await expect(new YahooClient({ fetch: f, retry: { attempts: 5, baseMs: 1 }, throttle: th.throttle }).fetchChart("SPY", 1, 2)).rejects.toMatchObject({ status: 403 });
+    expect(th.cools).toEqual([]);
+  });
+
+  it("429 가 아닌 응답이 오면 연속 횟수가 초기화된다 — 띄엄띄엄 429 가 나도 브레이커가 열리지 않는다", async () => {
+    const y = fakeYahoo({ quoteStatuses: [429, 200, 429, 200, 429, 200, 429, 200] });
+    const th = fakeThrottle({ maxLevel: 1 });
+    const c = new YahooClient({ fetch: y.fetchFn, retry: { attempts: 3, baseMs: 1 }, throttle: th.throttle });
+    for (const s of ["A", "B", "C", "D"]) await expect(c.fetchFundInfo(s)).resolves.toBeTruthy();
+    expect(th.cools).toEqual([10_000, 10_000, 10_000, 10_000]);
   });
 });

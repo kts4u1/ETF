@@ -4,6 +4,7 @@
  * 데이터를 만들지 않고 명확한 오류로 멈춘다. 파서는 네트워크 없이 테스트할 수 있게 순수 함수로 분리했다.
  */
 import { HttpError, withRetry } from "./naver";
+import { RateLimitedError, retryAfterMs, type Throttle } from "./throttle";
 
 /** 브라우저 UA. 야후는 라이브러리 기본 UA 를 막는 일이 있다. */
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
@@ -236,6 +237,11 @@ export interface YahooClientOptions {
   /** 재시도 횟수·기본 대기(ms). 테스트에서 대기를 줄일 때 쓴다 */
   retry?: { attempts?: number; baseMs?: number };
   timeoutMs?: number;
+  /**
+   * 호출 제한(429) 공유 쿨다운·요청 간격·서킷 브레이커. 주면 429 는 호출마다 따로 재시도하지 않고 전체가 같이 쉰다(throttle.ts).
+   * 없으면 호출마다 지수 백오프로 재시도한다.
+   */
+  throttle?: Throttle;
 }
 
 interface Session {
@@ -259,6 +265,7 @@ export class YahooClient {
   private readonly attempts: number;
   private readonly baseMs: number;
   private readonly timeoutMs: number;
+  private readonly throttle?: Throttle;
   private current: Session | null = null;
   private opening: Promise<Session> | null = null;
 
@@ -267,6 +274,7 @@ export class YahooClient {
     this.attempts = opts.retry?.attempts ?? 5;
     this.baseMs = opts.retry?.baseMs ?? 800;
     this.timeoutMs = opts.timeoutMs ?? 30_000;
+    this.throttle = opts.throttle;
   }
 
   private async http(url: string, headers: Record<string, string> = {}): Promise<Response> {
@@ -275,14 +283,41 @@ export class YahooClient {
 
   /** 일시적 오류(429·5xx·네트워크)는 재시도하고, 그 밖의 비정상 상태 코드는 HttpError 로 즉시 실패한다. */
   private async getRetry<T>(url: string, headers: Record<string, string>, read: (res: Response) => Promise<T>): Promise<T> {
-    return withRetry(
-      async () => {
+    const throttle = this.throttle;
+    if (!throttle) {
+      return withRetry(
+        async () => {
+          const res = await this.http(url, headers);
+          return read(res);
+        },
+        this.attempts,
+        this.baseMs,
+      );
+    }
+    // 429 는 공유 쿨다운이 기다려 주고(모든 요청이 같이 쉰다), 5xx·네트워크 오류는 호출마다 지수 백오프로 재시도한다.
+    let last: unknown;
+    for (let i = 0; i < this.attempts; i++) {
+      try {
+        await throttle.beforeRequest();
         const res = await this.http(url, headers);
-        return read(res);
-      },
-      this.attempts,
-      this.baseMs,
-    );
+        if (res.status === 429) {
+          const wait = retryAfterMs(res.headers.get("retry-after"));
+          await res.body?.cancel().catch(() => {});
+          throttle.rateLimited(wait);
+          throw new HttpError(429, url);
+        }
+        throttle.succeeded();
+        return await read(res);
+      } catch (e) {
+        last = e;
+        if (e instanceof RateLimitedError) throw e;
+        const status = e instanceof HttpError ? e.status : null;
+        const retriable = status === null || status >= 500 || status === 429;
+        if (!retriable || i === this.attempts - 1) break;
+        if (status !== 429) await new Promise((r) => setTimeout(r, this.baseMs * 2 ** i + Math.random() * 200));
+      }
+    }
+    throw last;
   }
 
   /** 쿠키+crumb 세션. 동시에 여러 호출이 와도 한 번만 만든다. */
