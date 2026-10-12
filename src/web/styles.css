@@ -570,3 +570,7 @@ button, a, summary, label, select { touch-action: manipulation; }
   .compare-table .th-action .basket-btn { padding: 0 8px; font-size: 13px; }
   .compare-table .num.wrap-cell { min-width: 0; }
 }
+
+/* 붙여넣기 칸: 안내 글자(placeholder)가 입력한 내용처럼 보이지 않게 흐린 기울임으로, 버튼 줄은 칸·포커스 테두리와 떨어뜨린다 */
+.paste textarea::placeholder { color: var(--text-3); opacity: 0.7; font-style: italic; font-family: inherit; }
+.paste + .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
