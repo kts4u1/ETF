@@ -76,6 +76,10 @@ npm run backtest   # 수집된 시세로 워크포워드 백테스트 → docs/B
 
 **데이터 커밋은 PR 이 아니라 기본 브랜치에 직접 합니다.** 이유: ① 사람이 읽을 수 없는 한 줄 JSON(약 3MB) 수치 파일이라 PR 로 만들어도 검토할 것이 없고, 실제 검토는 자동 안전장치(접속 점검·실패 기준·이상 징후 판정·테스트·빌드)가 합니다. ② PR 방식은 매주 사람이 병합해야 해서 '자동 갱신'이 아니게 되고(안 하면 데이터가 묵음), 쌓인 PR 끼리 같은 줄을 고쳐 충돌합니다. ③ GitHub Actions 가 PR 을 만들려면 저장소 설정(Settings → Actions → Workflow permissions 의 "Allow GitHub Actions to create and approve pull requests")을 따로 켜야 하고, 자동 병합은 브랜치 보호 규칙까지 필요합니다. 잘못 들어간 데이터는 그 커밋만 `git revert` 하면 되돌아가고, 다음 실행은 되돌린 데이터를 기준으로 판정합니다. 나중에 기본 브랜치에 보호 규칙(PR 필수)을 켜면 봇의 직접 푸시가 거절되므로, 그때는 워크플로의 커밋 단계를 `data` 브랜치로 푸시하도록 바꾸세요. 새 ETF는 상장 직후에는 시세가 없을 수 있지만(상장 다음 거래일부터 생김), 막 상장해 시세가 1행 이하여도 국내는 목록에 포함되고 해외는 검색 색인에 나옵니다. 새 ETF가 나타나기까지는 최대 하루(평일 갱신 주기) 걸립니다.
 
+### 공개 홈페이지(GitHub Pages)
+
+`.github/workflows/deploy-pages.yml` 이 `main` 에 푸시되거나 데이터 자동 갱신이 끝날 때마다 `dist/` 를 배포합니다. **처음 한 번** 저장소 Settings → Pages → Build and deployment → Source 를 **GitHub Actions** 로 바꿔야 합니다. 주소는 `https://kts4u1.github.io/ETF/` 입니다. 폰에서 열어 "홈 화면에 추가"를 하면 앱처럼 실행됩니다(`manifest.webmanifest`·아이콘 포함, 오프라인 동작은 없음).
+
 ### 배포
 `npm run build` 결과물(`dist/`)은 **서버가 필요 없는 정적 파일**입니다(해시 라우팅, 상대 경로).
 GitHub Pages, Netlify 등 어디에나 올릴 수 있습니다. 데이터를 최신으로 유지하려면 배포 전에 `npm run sync`를 실행하세요.
