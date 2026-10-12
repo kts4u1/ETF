@@ -1,0 +1,40 @@
+# 누구나 열 수 있는 공개 홈페이지(GitHub Pages)로 배포한다: https://<계정>.github.io/<저장소>/
+# 먼저 저장소 Settings → Pages → Source 를 "GitHub Actions" 로 한 번 설정해야 한다.
+# 기본 브랜치에 푸시되거나, 데이터 자동 갱신이 끝나거나(봇 커밋은 push 를 일으키지 않는다), 수동 실행하면 새로 배포한다.
+name: deploy-pages
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["Refresh data"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
