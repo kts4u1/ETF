@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fmtAsOf } from "../core/format";
 import { langArray, tr } from "../core/i18n";
 import { codesFromQuery } from "../core/basket";
@@ -36,15 +36,53 @@ const META_DESC_EN = "Understand and compare Korea-listed and US-listed ETFs in 
 
 type Theme = "auto" | "light" | "dark";
 
+/** 폰 브라우저 상단 막대 색(theme-color). 자동이면 시스템 설정을 따르는 원래 값, 직접 고르면 그 테마의 배경색 */
+const THEME_COLOR = { light: "#f6f5f2", dark: "#121211" } as const;
+function syncThemeColor(theme: Theme) {
+  for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
+    if (!m.hasAttribute("data-auto")) m.setAttribute("data-auto", m.getAttribute("content") ?? "");
+    m.setAttribute("content", theme === "auto" ? (m.getAttribute("data-auto") ?? "") : THEME_COLOR[theme]);
+  }
+}
+
 function useTheme(): [Theme, () => void] {
   const [theme, setTheme] = useState<Theme>(() => (readText("etf-picker:theme") as Theme | null) ?? "auto");
   useEffect(() => {
     const el = document.documentElement;
     if (theme === "auto") el.removeAttribute("data-theme");
     else el.setAttribute("data-theme", theme);
+    syncThemeColor(theme);
     writeText("etf-picker:theme", theme === "auto" ? null : theme);
   }, [theme]);
   return [theme, () => setTheme((t) => (t === "auto" ? "dark" : t === "dark" ? "light" : "auto"))];
+}
+
+/**
+ * 좁은 화면에서 메뉴는 가로로 스크롤된다. 현재 메뉴가 가려져 있으면 보이는 자리로 옮기고,
+ * 더 있는 쪽 가장자리를 흐리게 해(data-fade-l/r) 옆으로 밀 수 있다는 걸 알린다.
+ */
+function useNavScroll(active: string) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = ref.current;
+    if (!nav) return;
+    const mark = () => {
+      nav.toggleAttribute("data-fade-l", nav.scrollLeft > 2);
+      nav.toggleAttribute("data-fade-r", nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2);
+    };
+    const cur = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (cur && (cur.offsetLeft < nav.scrollLeft || cur.offsetLeft + cur.offsetWidth > nav.scrollLeft + nav.clientWidth)) {
+      nav.scrollLeft = Math.max(0, cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2);
+    }
+    mark();
+    nav.addEventListener("scroll", mark, { passive: true });
+    window.addEventListener("resize", mark);
+    return () => {
+      nav.removeEventListener("scroll", mark);
+      window.removeEventListener("resize", mark);
+    };
+  }, [active]);
+  return ref;
 }
 
 function Shell() {
@@ -66,12 +104,15 @@ function Shell() {
   }
 
   const active = route.name === "etf" ? "explore" : route.name;
+  const navRef = useNavScroll(active);
+  const themeIcon = theme === "auto" ? "◐" : theme === "dark" ? "☾" : "☀";
+  const themeName = theme === "auto" ? tr("자동", "Auto") : theme === "dark" ? tr("다크", "Dark") : tr("라이트", "Light");
   return (
     <>
       <header className="topbar">
         <div className="wrap topbar-in">
-          <a className="brand" href={href("/")}><span className="logo" aria-hidden>↗</span> ETF Search</a>
-          <nav aria-label={tr("주 메뉴", "Main menu")}>
+          <a className="brand" href={href("/")} aria-label="ETF Search"><span className="logo" aria-hidden>↗</span> <span className="brand-text">ETF Search</span></a>
+          <nav ref={navRef} aria-label={tr("주 메뉴", "Main menu")}>
             {NAV.map((n, i) => (
               <a key={n.name} href={href(n.path)} aria-current={active === n.name ? "page" : undefined}>
                 {NAV_LABEL[i]}
@@ -85,7 +126,8 @@ function Shell() {
               `화면 테마: ${theme === "auto" ? "시스템" : theme === "dark" ? "다크" : "라이트"} (누르면 전환)`,
               `Theme: ${theme === "auto" ? "system" : theme === "dark" ? "dark" : "light"} (press to switch)`,
             )}>
-            {theme === "auto" ? tr("◐ 자동", "◐ Auto") : theme === "dark" ? tr("☾ 다크", "☾ Dark") : tr("☀ 라이트", "☀ Light")}
+            {/* 좁은 화면에서는 아이콘만 보인다(이름은 aria-label·title 에 있다) */}
+            <span aria-hidden>{themeIcon}</span><span className="theme-name" aria-hidden> {themeName}</span>
           </button>
         </div>
       </header>

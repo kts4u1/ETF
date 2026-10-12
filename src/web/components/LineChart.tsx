@@ -42,12 +42,20 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => entry && setW(Math.max(280, Math.floor(entry.contentRect.width))));
+    const ro = new ResizeObserver(([entry]) => entry && setW(Math.max(220, Math.floor(entry.contentRect.width))));
     ro.observe(el);
-    setW(Math.max(280, Math.floor(el.getBoundingClientRect().width)));
+    setW(Math.max(220, Math.floor(el.getBoundingClientRect().width)));
     return () => ro.disconnect();
   }, []);
   return [ref, w];
+}
+
+/** 오른쪽 이름표: 11자까지, 남은 폭(budget px)에 들어가도록 더 줄인다. 11px 글자 기준 한글·… 은 약 11px, 영문 대문자 약 7.4px, 그 밖은 약 6.2px */
+function endLabel(label: string, budget: number): string {
+  const width = (t: string) => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 0x2e80 || ch === "…" ? 11 : /[A-Z]/.test(ch) ? 7.4 : 6.2), 0);
+  let t = label.length > 11 ? `${label.slice(0, 11)}…` : label;
+  while (t.length > 2 && width(t) > budget) t = `${t.replace(/…$/, "").slice(0, -1)}…`;
+  return t;
 }
 
 const fmtDate = (d: string) => `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
@@ -157,8 +165,10 @@ export function LineChart({ dates, series, yFormat, ariaLabel, height = 280 }: P
         tabIndex={0}
         onKeyDown={onKey}
         onBlur={() => setHover(null)}
+        onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
         onPointerMove={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={(e) => { if (e.pointerType !== "touch") setHover(null); }}
+        onPointerCancel={() => setHover(null)}
       >
         {ticks.map((t) => (
           <g key={t}>
@@ -174,7 +184,7 @@ export function LineChart({ dates, series, yFormat, ariaLabel, height = 280 }: P
         ))}
         {endLabels.map((l) => (
           <text key={l.k} className="end-label" x={width - right + 8} y={l.y} dominantBaseline="middle">
-            {l.label.length > 11 ? `${l.label.slice(0, 11)}…` : l.label}
+            {endLabel(l.label, right - 10)}
           </text>
         ))}
         {tip && (

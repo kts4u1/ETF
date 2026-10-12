@@ -178,7 +178,7 @@ export function Compare({ codes }: { codes: string[] }) {
           </section>
         </>
       )}
-      <p><a href={href("/explore")}>{tr("← ETF 탐색으로", "← Back to Explore")}</a></p>
+      <p><a className="back-link" href={href("/explore")}>{tr("← ETF 탐색으로", "← Back to Explore")}</a></p>
       <Disclaimer />
     </>
   );
