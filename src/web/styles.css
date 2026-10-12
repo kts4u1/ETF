@@ -118,9 +118,15 @@ main.wrap { padding-top: 20px; padding-bottom: 32px; display: grid; grid-templat
 .brand { font-weight: 800; font-size: 17px; color: var(--text); letter-spacing: -0.02em; display: inline-flex; align-items: center; gap: 8px; }
 .brand:hover { text-decoration: none; }
 .logo { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--accent-ink); font-size: 15px; }
-nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
-nav a { color: var(--text-2); padding: 8px 12px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
+nav { position: relative; display: flex; gap: 2px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+nav::-webkit-scrollbar { display: none; }
+nav a { display: inline-flex; align-items: center; min-height: 40px; color: var(--text-2); padding: 8px 12px; border-radius: 8px; font-weight: 600; white-space: nowrap; }
 nav a:hover { background: var(--surface-2); text-decoration: none; }
+nav a:focus-visible { outline-offset: -3px; }
+/* 옆으로 더 있는 쪽 가장자리를 흐리게(App.tsx useNavScroll 이 data-fade-l/r 를 켠다) */
+nav[data-fade-r] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+nav[data-fade-l] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+nav[data-fade-l][data-fade-r] { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
 .theme-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
 .theme-btn:hover { background: var(--surface-2); }
@@ -232,7 +238,16 @@ input[type="search"] { width: 100%; }
 /* ───────── 테이블 ───────── */
 /* position: relative — 표 안의 .sr-only(절대 위치) 글자가 스크롤 영역 밖으로 빠져나와 페이지 가로 스크롤을 만들지 않게 한다 */
 .table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-.card > .table-wrap { border: 0; border-radius: 0; background: transparent; }
+.card > .table-wrap { border: 0; border-radius: 0; }
+/* 옆으로 스크롤되는 표는 더 있는 쪽 가장자리에 그림자가 보인다: local(내용과 함께 움직이는 덮개)이 scroll(고정 그림자)을 끝에서 가린다 */
+.table-wrap {
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent) left center / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 30%, transparent) right center / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text) 28%, transparent), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text) 28%, transparent), transparent) right center / 10px 100% no-repeat scroll,
+    var(--surface);
+}
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th, .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .table th { font-size: 12px; color: var(--text-3); font-weight: 700; white-space: nowrap; background: var(--surface); position: sticky; top: 0; }
@@ -360,14 +375,22 @@ input[type="search"] { width: 100%; }
   .score-bars { grid-column: auto; }
 }
 @media (max-width: 600px) {
-  /* 좁은 화면: 로고·테마 버튼은 윗줄, 메뉴는 아랫줄 전체 폭 */
-  .topbar-in { gap: 4px 12px; padding-bottom: 6px; }
-  .brand { order: 1; flex: 1; }
-  .lang-switch { order: 2; margin-left: 0; }
-  .theme-btn { order: 2; }
+  /* 좁은 화면: 첫 줄은 로고·언어·테마, 둘째 줄은 메뉴(가로 스크롤).
+     sticky 의 top 을 첫 줄 높이(위 여백 4 + 버튼 44 + 줄 간격 4)만큼 음수로 두면, 스크롤할 때 첫 줄은 밀려 올라가고
+     메뉴 줄만 화면 위에 남아 세로 공간을 아낀다. */
+  .topbar { top: -52px; }
+  .topbar-in { gap: 4px 8px; min-height: 0; padding-top: 4px; padding-bottom: 4px; }
+  .brand { order: 1; flex: 1; min-width: 0; }
+  .lang-switch { order: 2; margin-left: 0; min-height: 44px; }
+  .theme-btn { order: 2; min-height: 44px; min-width: 44px; padding: 0; font-size: 17px; }
+  .theme-name { display: none; }
   nav { order: 3; flex: 1 0 100%; }
   /* 영어 메뉴 이름(Compare·Combos 등)이 한 줄에 다 들어가도록 좌우 여백을 줄인다 */
   nav a { padding: 8px 9px; }
+}
+@media (max-width: 349px) {
+  /* 320px 폭에서는 로고·언어·테마가 한 줄에 들어가도록 글자 이름은 숨긴다(링크 이름은 aria-label 로 유지) */
+  .brand-text { display: none; }
 }
 @media (max-width: 520px) {
   /* 5년 수익률이 세 자리(+107.7%)여도 칸 안에서 "%" 가 떨어져 나가지 않게 */
@@ -430,7 +453,7 @@ input[type="search"] { width: 100%; }
   .basket-table td { padding: 0; border: 0; text-align: left; min-width: 0; }
   .basket-table td.num { text-align: left; white-space: normal; }
   .basket-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; color: var(--text-3); margin-bottom: 1px; }
-  .basket-table .c-sel { grid-column: 1; grid-row: 1; padding-top: 4px; }
+  .basket-table .c-sel { grid-column: 1; grid-row: 1; }
   .basket-table .c-name { grid-column: 2 / 6; grid-row: 1; min-width: 0; }
   .basket-table .c-rm { grid-column: 6; grid-row: 1; text-align: right; }
   .basket-table .c-price { grid-column: 1 / 3; grid-row: 2; }
@@ -462,3 +485,88 @@ input[type="search"] { width: 100%; }
 .toast { pointer-events: auto; display: inline-flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; max-width: min(560px, 100%); padding: 10px 14px; border-radius: 12px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 600; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); }
 .toast a { color: inherit; text-decoration: underline; font-weight: 800; white-space: nowrap; }
 @media (max-width: 640px) { .basket-table .c-price { white-space: nowrap; } }
+
+/* ───────── 휴대폰 ─────────
+   점검 기준(폭 320~412): 가로 스크롤 없음, 눌러야 하는 것은 44px 이상, 입력칸은 16px 이상(iOS 가 그보다 작으면 확대한다),
+   넓은 표는 한 개당 카드로, 더 넘어가는 표는 가장자리 그림자로 알린다. */
+html { scroll-padding-top: 12px; }
+button, a, summary, label, select { touch-action: manipulation; }
+.sort-bar { display: none; }
+.ovl-short, .ovl-legend { display: none; }
+.tap-check { cursor: pointer; }
+
+/* 노치·둥근 모서리가 있는 폰의 가로 모드에서 내용이 가려지지 않게 */
+.wrap { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+.footer { padding-bottom: max(40px, calc(24px + env(safe-area-inset-bottom))); }
+
+/* 손가락(굵은 포인터)이거나 좁은 화면이면 누르는 대상을 키운다 */
+@media (pointer: coarse), (max-width: 640px) {
+  select, input[type="search"], .select select, .note-input, .manual-copy textarea, .paste textarea { font-size: 16px; }
+  .btn, .basket-btn, .seg button, .seg.small button, .chip-btn, .link-btn, .icon-btn, select, input[type="search"], .note-input { min-height: 44px; }
+  .link-btn { display: inline-flex; align-items: center; }
+  .basket-btn.compact { width: 44px; min-height: 44px; }
+  .icon-btn { min-width: 44px; }
+  .lang-switch button { min-height: 44px; padding-left: 12px; padding-right: 12px; }
+  .theme-btn { min-height: 44px; }
+  nav a { min-height: 44px; }
+  .chip-btn { padding-left: 14px; padding-right: 14px; }
+  .chips-row, .actions, .basket-actions { gap: 8px; }
+  .advanced summary, .etf-foot summary, .chart-table summary, .caution-details summary, .reason-list summary, .excluded summary, summary { padding-top: 12px; padding-bottom: 12px; }
+  .check { padding: 10px 0; }
+  .check input { width: 22px; height: 22px; margin: 1px 0 0; flex: none; }
+  .tap-check { display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -8px 0 -8px -10px; }
+  .tap-check input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+  .pick { min-height: 44px; padding: 4px 4px 4px 12px; }
+  .pick .x { width: 36px; height: 36px; font-size: 20px; }
+  .toast a { padding: 10px 6px; margin: -10px -6px; }
+  .table .th-btn { min-height: 44px; }
+  .brand { min-height: 44px; }
+  .seg.small button { min-width: 44px; }
+  /* 목록·표 안에서 단독으로 눌러야 하는 링크: 글줄 높이만으로는 24px 에 못 미친다 */
+  .names a, .etf-title h3 a, .rec-table td > a, .compare-table th > a, .pick > a:not(.x), .back-link { display: inline-block; padding: 6px 0; }
+  .back-link { padding: 12px 0; }
+  .pick .x { flex: none; }
+}
+
+@media (max-width: 640px) {
+  .table th { white-space: normal; }
+  .sort-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+  .sort-bar .select { flex: 1; min-width: 150px; }
+  /* 탐색 필터: 선택 상자 4개를 두 칸씩(세로로 길게 쌓이지 않게) */
+  .filter-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; align-items: end; }
+  .filter-row .select { min-width: 0; }
+  .filter-row select { width: 100%; min-width: 0; }
+  .filter-row .check { grid-column: 1 / -1; }
+
+  /* 탐색 목록: 표 대신 ETF 한 개당 카드(위: 선택·이름·장바구니, 아래: 지표 3×3). 표 구조와 데이터는 그대로다. */
+  .table-wrap:has(.cards-sm) { overflow: visible; border: 0; background: transparent; }
+  .cards-sm, .cards-sm tbody, .cards-sm tr, .cards-sm td { display: block; }
+  .cards-sm thead { display: none; }
+  .cards-sm tr { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px 8px; align-items: start; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px 12px; margin-bottom: 10px; box-shadow: var(--shadow); }
+  .cards-sm td { padding: 0; border: 0; text-align: left; min-width: 0; }
+  .cards-sm td.num { text-align: left; white-space: normal; }
+  .cards-sm td[data-label] { grid-column: span 2; }
+  .cards-sm td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 700; color: var(--text-3); margin-bottom: 1px; }
+  .cards-sm .c-sel { grid-column: 1; grid-row: 1; }
+  .cards-sm .c-name { grid-column: 2 / 6; grid-row: 1; min-width: 0; }
+  .cards-sm .c-add { grid-column: 6; grid-row: 1; justify-self: end; }
+  .cards-sm .name-cell a, .basket-table .name-cell a { padding: 10px 0 10px; margin-bottom: -8px; }
+
+  /* 겹침 행렬: 열 머리글은 A·B·C·D 로 줄이고(긴 이름이 표를 밀어내지 않게) 행 머리글 앞에 같은 글자를 붙인다 */
+  .overlap-table .ovl-full { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .overlap-table .ovl-short, .ovl-legend .ovl-short { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); color: var(--text-2); font-weight: 800; font-size: 12px; margin-right: 6px; vertical-align: middle; }
+  .ovl-legend { display: grid; gap: 4px; list-style: none; margin: 10px 0 8px; padding: 0; font-size: 13px; color: var(--text-2); }
+  .ovl-legend .ovl-short { margin-right: 8px; }
+  .overlap-table th, .overlap-table td { padding: 10px 4px; }
+  .overlap-table th.num { text-align: center; }
+  .overlap-table td.num { white-space: normal; text-align: center; font-size: 13px; }
+  .overlap-table th[scope="row"] { width: 1%; white-space: nowrap; }
+
+  /* 지표 비교: 맨 왼쪽 행 이름 열을 고정해, 옆으로 밀어도 무슨 값인지 보이게 */
+  .compare-table th[scope="row"], .overlap-table th[scope="row"] { overflow-wrap: normal; }
+  .compare-table th[scope="row"] { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 72px; max-width: 118px; padding: 10px 6px; box-shadow: 1px 0 0 var(--border); }
+  .compare-table thead th:first-child { left: 0; z-index: 2; }
+  .compare-table th.num, .compare-table td.num { white-space: normal; min-width: 84px; padding: 10px 6px; }
+  .compare-table .th-action .basket-btn { padding: 0 8px; font-size: 13px; }
+  .compare-table .num.wrap-cell { min-width: 0; }
+}

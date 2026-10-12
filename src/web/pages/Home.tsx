@@ -74,7 +74,7 @@ export function Home() {
         <section aria-labelledby="class-h">
           <div className="section-head"><h2 id="class-h">{tr("자산군별 대표 후보", "Top candidate by asset class")}</h2><span className="muted">{tr("각 자산군에서 점수가 가장 높은 1개", "The highest-scoring one in each asset class")}</span></div>
           <div className="table-wrap">
-            <table className="table">
+            <table className="table rec-table">
               <thead><tr><th>{tr("자산군", "Asset class")}</th><th>ETF</th><th className="num">{tr("점수", "Score")}</th></tr></thead>
               <tbody>
                 {perClass.map((s) => (

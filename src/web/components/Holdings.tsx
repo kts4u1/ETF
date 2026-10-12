@@ -139,6 +139,9 @@ export function HoldingsSection({ etf }: { etf: EtfRecord }) {
   );
 }
 
+/** 좁은 화면에서 행렬의 열 머리글은 긴 이름 대신 A·B·C·D 로 줄이고, 행 머리글 앞에 같은 글자를 붙여 짝을 맞춘다 */
+const ovlLetter = (i: number) => String.fromCharCode(65 + i);
+
 /** 비교 화면: 선택한 ETF끼리의 겹침 행렬과, 가장 많이 겹치는 쌍의 공통 종목 */
 export function OverlapPanel({ codes }: { codes: string[] }) {
   const { data: file } = useHoldings();
@@ -166,15 +169,19 @@ export function OverlapPanel({ codes }: { codes: string[] }) {
     <section className="card" aria-labelledby="ovl-h">
       <h2 id="ovl-h">{tr("구성종목 겹침", "Holdings overlap")}</h2>
       <p className="hint" style={{ marginTop: 0 }}>{tr("같은 금액을 넣었을 때 같은 종목에 들어가는 비중(%)입니다. 100%에 가까우면 사실상 같은 ETF입니다.", "The share (%) that lands in the same securities when the same amount goes in. Near 100% means effectively the same ETF.")}</p>
+      {/* 좁은 화면에서는 행렬 머리글이 A·B·C·D 로 줄어, 어느 글자가 어느 ETF인지 여기서 알려 준다(스크린리더는 머리글의 전체 이름을 읽는다) */}
+      <ul className="ovl-legend" aria-hidden>
+        {codes.map((c, i) => <li key={c}><span className="ovl-short">{ovlLetter(i)}</span>{label(c)}</li>)}
+      </ul>
       <div className="table-wrap">
         <table className="table overlap-table">
           <thead>
-            <tr><th />{codes.map((c) => <th key={c} className="num">{label(c)}</th>)}</tr>
+            <tr><th />{codes.map((c, i) => <th key={c} className="num"><span className="ovl-full">{label(c)}</span><span className="ovl-short" aria-hidden>{ovlLetter(i)}</span></th>)}</tr>
           </thead>
           <tbody>
             {codes.map((a, i) => (
               <tr key={a}>
-                <th scope="row">{label(a)}</th>
+                <th scope="row"><span className="ovl-short" aria-hidden>{ovlLetter(i)}</span><span className="ovl-full">{label(a)}</span></th>
                 {codes.map((b, j) => {
                   const v = data.matrix[i]![j]!;
                   if (!Number.isFinite(v)) {

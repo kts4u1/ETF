@@ -359,7 +359,7 @@ export function Basket({ incoming }: { incoming: string[] }) {
                   const p = etf ? priceParts(etf) : null;
                   return (
                     <tr key={item.code}>
-                      <td className="c-sel">{etf && <input type="checkbox" checked={sel.includes(item.code)} disabled={!sel.includes(item.code) && sel.length >= 4} onChange={() => toggleSel(item.code)} aria-label={tr(`${etf.name} 비교에 추가`, `Add ${etf.name} to comparison`)} />}</td>
+                      <td className="c-sel">{etf && <label className="tap-check"><input type="checkbox" checked={sel.includes(item.code)} disabled={!sel.includes(item.code) && sel.length >= 4} onChange={() => toggleSel(item.code)} aria-label={tr(`${etf.name} 비교에 추가`, `Add ${etf.name} to comparison`)} /></label>}</td>
                       <td className="name-cell c-name">
                         {etf ? <a href={etfHref(etf.code)}>{etf.name}</a> : <b>{item.name}</b>}
                         <span className="muted">{etf && <><MarketBadge etf={etf} />{" "}</>}<span className="code">{item.code}</span>{etf ? ` · ${typeLine(etf)}` : ""}</span>

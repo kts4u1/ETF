@@ -33,6 +33,8 @@ const PAGE = 50;
 export function Explore() {
   const { snap, scoreOf, counts } = useApp();
   const COLS = cols();
+  /** 카드 모양(좁은 화면)에서 각 값 위에 붙는 이름 */
+  const L = Object.fromEntries(COLS.map((c) => [c.key, c.label])) as Record<SortKey, string>;
   const [q, setQ] = useState("");
   const [mkt, setMkt] = useState<MarketFilter>("all");
   const [cls, setCls] = useState<AssetClass | "">("");
@@ -138,10 +140,22 @@ export function Explore() {
         {sel.length >= 2 ? <a className="btn" href={compareHref(sel)}>{tr(`선택한 ${sel.length}개 비교`, `Compare ${sel.length} selected`)}</a> : <span className="muted">{tr("비교하려면 2~4개를 체크하세요", "Tick 2–4 ETFs to compare")}</span>}
       </div>
 
+      {/* 좁은 화면에서는 표가 카드로 바뀌어 머리글 정렬 버튼이 없다. 그 자리를 이 막대가 맡는다(넓은 화면에서는 숨김) */}
+      <div className="sort-bar">
+        <label className="select"><span>{tr("정렬 기준", "Sort by")}</span>
+          <select value={sort.key} onChange={(e) => { const c = COLS.find((x) => x.key === e.target.value)!; setShown(PAGE); setSort({ key: c.key, dir: c.desc ? -1 : 1 }); }}>
+            {COLS.map((c) => <option key={c.key} value={c.key}>{c.key === "name" ? tr("이름", "Name") : c.label}</option>)}
+          </select>
+        </label>
+        <button type="button" className="btn ghost" onClick={() => { setShown(PAGE); setSort((cur) => ({ ...cur, dir: (cur.dir * -1) as 1 | -1 })); }}>
+          {sort.dir === 1 ? tr("▲ 오름차순", "▲ Ascending") : tr("▼ 내림차순", "▼ Descending")}
+        </button>
+      </div>
+
       {hasOverseas && <FxNote>{tr("해외(미국) 상장 ETF의 가격·순자산·거래대금·수익률은 원화 환산 값입니다(달러 가격 × 같은 날 원/달러 환율). 모닝스타 카테고리는 참고용 영문 분류입니다.", "Prices, net assets, trading value and returns of US-listed ETFs are KRW-converted values (USD price × same-day USD/KRW rate). Morningstar categories are shown for reference.")}</FxNote>}
 
       <div className="table-wrap">
-        <table className="table explore">
+        <table className="table explore cards-sm">
           <thead>
             <tr>
               <th aria-label={tr("비교 선택", "Select to compare")} />
@@ -160,21 +174,21 @@ export function Explore() {
               const sc = scoreOf(e.code);
               return (
                 <tr key={e.code}>
-                  <td><input type="checkbox" checked={sel.includes(e.code)} disabled={!sel.includes(e.code) && sel.length >= 4} onChange={() => toggleSel(e.code)} aria-label={tr(`${e.name} 비교에 추가`, `Add ${e.name} to comparison`)} /></td>
-                  <td><BasketButton etf={e} compact /></td>
-                  <td className="name-cell">
+                  <td className="c-sel"><label className="tap-check"><input type="checkbox" checked={sel.includes(e.code)} disabled={!sel.includes(e.code) && sel.length >= 4} onChange={() => toggleSel(e.code)} aria-label={tr(`${e.name} 비교에 추가`, `Add ${e.name} to comparison`)} /></label></td>
+                  <td className="c-add"><BasketButton etf={e} compact /></td>
+                  <td className="name-cell c-name">
                     <a href={etfHref(e.code)}>{e.name}</a>
                     <span className="muted"><MarketBadge etf={e} /> {e.code}{isOverseas(e) && listingLine(e) ? ` · ${listingLine(e)}` : ""} · {ASSET_CLASS_LABEL[e.tax.assetClass]}{e.tax.theme ? ` · ${themeLabel(e.tax.theme)}` : ""}{e.tax.tags.length ? ` · ${e.tax.tags.map((t) => TAG_LABEL[t]).join("·")}` : ""}</span>
                   </td>
-                  <td className="num">{sc ? Math.round(sc.score) : <span className="muted">-</span>}</td>
-                  <td className="num"><Delta v={e.m.ret.y1} /></td>
-                  <td className="num"><Delta v={e.m.cagr3y} /></td>
-                  <td className="num">{fmtRatio(volOf(e), 0)}</td>
-                  <td className="num">{fmtRatio(mddOf(e), 0)}</td>
-                  <td className="num">{fmtFee(e.fee)}</td>
-                  <td className="num" title={e.aumScope === "fund" ? aumFundNote() : undefined}>{aumText(e)}</td>
-                  <td className="num">{fmtWon(e.m.avgValue20)}</td>
-                  <td className="num">{fmtHistory(e.m.years, e.m.days)}</td>
+                  <td className="num" data-label={L.score}>{sc ? Math.round(sc.score) : <span className="muted">-</span>}</td>
+                  <td className="num" data-label={L.y1}><Delta v={e.m.ret.y1} /></td>
+                  <td className="num" data-label={L.cagr3y}><Delta v={e.m.cagr3y} /></td>
+                  <td className="num" data-label={L.vol}>{fmtRatio(volOf(e), 0)}</td>
+                  <td className="num" data-label={L.mdd}>{fmtRatio(mddOf(e), 0)}</td>
+                  <td className="num" data-label={L.fee}>{fmtFee(e.fee)}</td>
+                  <td className="num" data-label={L.aum} title={e.aumScope === "fund" ? aumFundNote() : undefined}>{aumText(e)}</td>
+                  <td className="num" data-label={L.value}>{fmtWon(e.m.avgValue20)}</td>
+                  <td className="num" data-label={L.years}>{fmtHistory(e.m.years, e.m.days)}</td>
                 </tr>
               );
             })}
