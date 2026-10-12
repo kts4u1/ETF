@@ -398,10 +398,11 @@ export function Basket({ incoming }: { incoming: string[] }) {
           <p className="muted">{tr("증권사 앱의 관심종목, 메모, 이 앱에서 복사한 ‘목록’·‘CSV’를 그대로 붙여넣어도 코드를 찾아요. 국내는 6자리 코드, 해외는 티커입니다.", "Paste codes from your brokerage watchlist, notes, or a list/CSV copied from this app — it finds the codes. Korea-listed ETFs use 6-character codes, US-listed ETFs use tickers.")} {tr("다른 기기로 옮길 때는 이 기기에서 ‘목록 복사’(또는 ‘코드 복사’)한 글을 다른 기기의 이 칸에 붙여넣으세요.", "To move the list to another device, use “Copy list” (or “Copy codes”) here and paste it into this box on the other device.")}</p>
           <label className="paste">
             <span className="sr-only">{tr("붙여넣을 코드 목록", "Codes to paste")}</span>
-            <textarea value={paste} onChange={(e) => { setPaste(e.target.value); setPreview(null); }} rows={4} placeholder={"069500\nSPY, QQQ"} spellCheck={false} />
+            <textarea value={paste} onChange={(e) => { setPaste(e.target.value); setPreview(null); setImportMsg(""); }} rows={4} placeholder={"069500\nSPY, QQQ"} spellCheck={false} />
           </label>
           <span className="actions">
             <button type="button" className="btn" onClick={doPreview} disabled={paste.trim() === ""}>{tr("찾아서 확인하기", "Find and review")}</button>
+            {(paste !== "" || preview || importMsg) && <button type="button" className="btn ghost" onClick={() => { setPaste(""); setPreview(null); setImportMsg(""); }}>{tr("입력 지우기", "Clear input")}</button>}
           </span>
           {preview && (
             <div className="import-preview" role="group" aria-label={tr("찾은 ETF 확인", "Review found ETFs")}>
